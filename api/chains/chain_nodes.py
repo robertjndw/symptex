@@ -24,6 +24,7 @@ def make_load_docs_node(load_patient_docs_tool):
             return state  # nothing to do
 
         tool_messages: list[ToolMessage] = []
+        tool_output_text = None
 
         for tc in tool_calls:
             if tc.get("name") != "load_patient_docs":
@@ -45,9 +46,15 @@ def make_load_docs_node(load_patient_docs_tool):
                 )
             )
 
-        state["attach_docs"] = True
-        state["tool_calls"] = []  # consumed
+        state["tool_calls"] = []
 
+        if not tool_output_text:
+            logger.info("No docs found")
+            state["attach_docs"] = False
+            return state
+
+        state["attach_docs"] = True
+        
         # add tool messages to history for next LLM call
         state["messages"] = add_messages(state["messages"], tool_messages)
 
@@ -138,12 +145,24 @@ async def patient_model_final(state: CustomState) -> dict:
     }
 
 
-def branching_node(state: CustomState) -> str:
+def tool_branching_node(state: CustomState) -> str:
     """Routing function used by add_conditional_edges."""
     if state.get("hard_error", False):
         return "abort"
     tool_calls = state.get("tool_calls", []) or []
     return "has_tool_calls" if tool_calls else "no_tool_calls"
+
+def docs_branching_node(state: CustomState) -> str:
+    """Routing function used by add_conditional_edges."""
+    logger.info("Starting load docs branching")
+    if state.get("hard_error", False):
+        logger.info("Hard error aborting")
+        return "abort"
+    if state["attach_docs"]:
+        logger.info("Branching to summary node")
+        return "summary"
+    logger.info("Branching to final node")
+    return "end"
 
 def remove_tool_messages(messages):
     return [m for m in messages if not isinstance(m, ToolMessage)]

@@ -10,6 +10,8 @@ import streamlit as st
 
 # Constants
 API_URL = "http://host.docker.internal:8000/api/v1"
+
+#todo update with Ollama models
 AVAILABLE_MODELS = [
     "gemma-3-27b-it",
     "llama-3.3-70b-instruct",

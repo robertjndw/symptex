@@ -50,6 +50,7 @@ async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
     if not request.message:
         logger.error("Empty message received")
         raise PlainTextResponse("Message cannot be empty", status_code=400)
+    #todo update with Ollama models
     if request.model not in ["gemma-3-27b-it", "llama-3.3-70b-instruct", "llama-3.1-sauerkrautlm-70b-instruct", "qwq-32b", "mistral-large-instruct", "qwen3-235b-a22b"]:
         logger.error("Invalid model: %s", request.model)
         raise PlainTextResponse(f"Invalid model: {request.model}", status_code=400)

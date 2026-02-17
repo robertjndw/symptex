@@ -2,8 +2,8 @@ import logging
 
 from langgraph.graph import START, StateGraph, END
 
-from chains.chain_nodes import patient_model_final, branching_node, make_orchestrator_node, make_load_docs_node, \
-    summary_node
+from chains.chain_nodes import patient_model_final, tool_branching_node, make_orchestrator_node, make_load_docs_node, \
+    summary_node, docs_branching_node
 from chains.chain_tools import make_load_patient_files_tool
 from chains.custom_state import CustomState
 
@@ -25,14 +25,22 @@ def build_symptex_model(initial_state: CustomState):
     workflow.add_edge(START, "orchestrator_node")
     workflow.add_conditional_edges(
         "orchestrator_node",
-        branching_node,
+        tool_branching_node,
         {
             "abort": END,
             "has_tool_calls": "load_docs",
             "no_tool_calls": "patient_model_final",
         },
     )
-    workflow.add_edge("load_docs", "summary_node")
+    workflow.add_conditional_edges(
+        "load_docs",
+        docs_branching_node,
+        {
+            "abort": END,
+            "summary": "summary_node",
+            "end": "patient_model_final",
+        },
+    )
     workflow.add_edge("summary_node", "patient_model_final")
     workflow.add_edge("patient_model_final", END)
     return workflow.compile()
