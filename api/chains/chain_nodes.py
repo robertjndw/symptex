@@ -110,6 +110,8 @@ def make_orchestrator_node(tool_list: list):
             return state
     return orchestrator_node
 
+#todo check if summary works with more than one file
+#todo make the summary stay in the chat history so that the patient keeps the context
 async def summary_node(state: CustomState) -> CustomState:
     model = state["model"]
     prompt = summarizer_prompts.get_prompt()

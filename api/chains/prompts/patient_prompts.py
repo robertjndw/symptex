@@ -52,10 +52,9 @@ Verhalte dich wie eine echte Patientin bzw. ein echter Patient:
 * Verwende natürliche Umgangssprache, Füllwörter, Zögern sowie Gestik und Mimik – wie ein echter Mensch.
 * Reagiere nur, wenn dich die Ärztin oder der Arzt direkt anspricht oder dir eine inhaltliche Frage stellt.
 """
-DEFAULT_FEW_SHOT = [HumanMessagePromptTemplate.from_template("Wissen Sie was passiert ist?"),
-            AIMessagePromptTemplate.from_template("Ich ... *kratzt sich den Kopf* ... ich weiß es nicht ..."),
-            HumanMessagePromptTemplate.from_template("Welche anderen Erkrankungen haben Sie?"),
-            AIMessagePromptTemplate.from_template("Oh, uh… *Schweigen*"),
+#todo update few shot 
+DEFAULT_FEW_SHOT = [HumanMessagePromptTemplate.from_template("Welche Medikamente nehmen Sie?"),
+            AIMessagePromptTemplate.from_template("Schauen Sie, hier sind meine Unterlagen. Da ist der Medikationsplan dabei."),
             MessagesPlaceholder(variable_name="messages")]
 
 BASE_ALZHEIMER_PROMPT = """

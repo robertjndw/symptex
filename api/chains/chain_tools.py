@@ -2,7 +2,7 @@ from langchain_core.tools import tool
 
 from app.utils.pdf_utils import parse_pdf
 
-
+#todo if the instructor doesnt upload a document and a student asks for it, all documents will still be output. Solve this
 def make_load_patient_files_tool(file_paths: list[str]):
     @tool("load_patient_docs")
     def load_patient_docs_tool() -> str:
@@ -11,7 +11,7 @@ def make_load_patient_files_tool(file_paths: list[str]):
         (e.g., doctor's letters, reports, imaging findings, lab results).
 
         The Orchestrator Assistant should call this tool when the doctor asks about
-        “Befund”, “Befunde”, reports, findings, test results, imaging, or any related concept.
+        “Befund”, “Befunde”, "Medikamente", reports, findings, test results, imaging, or any related concept.
         """
         parts = []
         for fp in file_paths:
