@@ -35,7 +35,7 @@ def get_external_llm(model: str) -> ChatOpenAI:
 
 def get_local_llm() -> ChatOllama:
     return ChatOllama(
-        model = "qwen2.5:7b-instruct",
+        model = "gpt-oss:120b-cloud",
         base_url="http://host.docker.internal:11434",
         temperature=0.7,
         top_p=0.8,

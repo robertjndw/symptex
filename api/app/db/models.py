@@ -34,7 +34,7 @@ class PatientFile(Base):
     gender_medical = Column(String)
     ethnic_origin = Column(String)
     anamneses = relationship("Anamnesis", back_populates="patient_file")
-    anam_docs = relationship("AnamDoc", back_populates="patient_file")
+    
 
 class Anamnesis(Base):
     __tablename__ = "anamneses"
@@ -44,12 +44,20 @@ class Anamnesis(Base):
     answer = Column(String)
     patient_file_id = Column(Integer, ForeignKey("patient_files.id"))
     patient_file = relationship("PatientFile", back_populates="anamneses")
+    anam_docs = relationship("AnamDoc", back_populates="anamnesis")
 
 class AnamDoc(Base):
     __tablename__ = "anam_docs"
+
     id = Column(Integer, primary_key=True, index=True)
-    file_path = Column(String)
-    type = Column(String)
-    patient_file_id = Column(Integer, ForeignKey("patient_files.id"))
-    patient_file = relationship("PatientFile", back_populates="anam_docs")
-    description = Column(Text)
+    category = Column(String, nullable=False)
+    original_name = Column(String, nullable=False)
+    storage_key = Column(String, nullable=False, unique=True, index=True)
+
+    anamnesis_id = Column(
+        Integer,
+        ForeignKey("anamneses.id", onupdate="CASCADE", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    anamnesis = relationship("Anamnesis", back_populates="anam_docs")

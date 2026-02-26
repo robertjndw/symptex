@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db.db import get_db
 from app.db.models import ChatSession, ChatMessage, PatientFile, AnamDoc
-from app.utils.pdf_utils import anamdoc_to_dict, load_pdfs_as_base64
+from app.utils.pdf_utils import load_pdfs_as_base64
 from chains.chat_chain import build_symptex_model
 from chains.eval_chain import eval_history
 from chains.formatting import format_patient_details
@@ -67,9 +67,6 @@ async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
         return PlainTextResponse("Patient not found", status_code=404)
     patient_details = format_patient_details(patient_file)
 
-    patient_doc_rows = db.query(AnamDoc).filter(AnamDoc.patient_file_id == patient_file.id).all()
-    patient_doc_md = [anamdoc_to_dict(row) for row in patient_doc_rows]
-
     # Create or get chat session
     session = db.query(ChatSession).filter(
         ChatSession.id == request.session_id
@@ -114,13 +111,12 @@ async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
             attach_docs_flag = {"value": False}
             try:
                 messages = previous_messages + [HumanMessage(content=request.message)]
-                logger.info("Beginning text streaming")
+                logger.info("Beginning text streaming") 
                 async for chunk in stream_response(
                     model=request.model,
                     condition=request.condition,
                     talkativeness=request.talkativeness,
                     patient_details=patient_details,
-                    patient_doc_md = patient_doc_md,
                     session_id=request.session_id,
                     previous_messages=messages,
                     attach_docs_flag=attach_docs_flag,
@@ -132,11 +128,11 @@ async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
                 if attach_docs_flag.get("value"):
                     logger.info("Attaching docs")
                     file_paths = []
+                    #todo update so that instead of reading directly, we request the files from the backend
                     for doc in patient_doc_md:
                         file_paths.append(container_dir + doc["file_path"])
                     logger.info("File paths: {}".format(file_paths))
                     docs = load_pdfs_as_base64(file_paths)
-                    logger.info("Loaded docs {}".format(docs))
                     docs_event = {
                         "event": "attach_docs",
                         "docs": docs,
@@ -220,7 +216,6 @@ async def stream_response(
     condition: str, 
     talkativeness: str, 
     patient_details: str,
-    patient_doc_md: list[dict],
     session_id: str,
     previous_messages: list,
     attach_docs_flag: dict | None = None,
@@ -248,7 +243,6 @@ async def stream_response(
         "condition": condition,
         "talkativeness": talkativeness,
         "patient_details": patient_details,
-        "patient_doc_md": patient_doc_md,
     }
     symptex_model = build_symptex_model(initial_state)
     try:

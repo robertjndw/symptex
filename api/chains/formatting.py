@@ -1,47 +1,33 @@
 def format_patient_details(patient_file):
     """
     Formats patient details from a PatientFile SQLAlchemy model instance.
+    Includes all anamneses/categories belonging to the patient file.
     """
-    # Get answer by category
-    def get_anamnesis(category):
-        for anam in patient_file.anamneses:
-            if anam.category.lower() == category.lower():
-                return anam.answer
-        return "Keine Angaben"
+    def fmt(value, unknown="Unbekannt"):
+        return value if value not in (None, "", []) else unknown
 
-    return f"""
-    Name: {patient_file.first_name} {patient_file.last_name}
-    Geburtsdatum: {patient_file.birth_date.strftime('%d.%m.%Y') if patient_file.birth_date else 'Unbekannt'}
-    Ethnie: {patient_file.ethnic_origin or 'Unbekannt'}
-    Größe: {patient_file.height or 'Unbekannt'} cm
-    Gewicht: {patient_file.weight or 'Unbekannt'} kg
-    Geschlecht (medizinisch): {patient_file.gender_medical or 'Unbekannt'}
+    def fmt_date(d):
+        return d.strftime("%d.%m.%Y") if d else "Unbekannt"
 
-    --- 
-    Krankheitsverlauf:
-    {get_anamnesis("Krankheitsverlauf")}
+    # Build anamnesis sections dynamically (stable order)
+    anamneses = list(patient_file.anamneses or [])
+    anamneses.sort(key=lambda a: (a.category or "").casefold())
 
-    --- 
-    Vorerkrankungen:
-    {get_anamnesis("Vorerkrankungen")}
+    sections = []
+    if anamneses:
+        for anam in anamneses:
+            category = fmt((anam.category or "").strip(), unknown="(Ohne Kategorie)")
+            answer = (anam.answer or "").strip() or "Keine Angaben"
+            sections.append(f"\n---\n{category}:\n{answer}\n")
+    else:
+        sections.append("\n---\nAnamnesen:\nKeine Angaben\n")
 
-    --- 
-    Dauermedikation:
-    {get_anamnesis("Medikamente")}
-
-    --- 
-    Allergien:
-    {get_anamnesis("Allergien")}
-
-    --- 
-    Familienanamnese:
-    {get_anamnesis("Familienanamnesis")}
-
-    --- 
-    Kardiovaskuläre Risikofaktoren:
-    {get_anamnesis("Kardiovaskuläre Risikofaktoren")}
-
-    --- 
-    Sozial-/Berufsanamnese:
-    {get_anamnesis("Sozial-/Berufsanamnesis")}
-    """
+    return (
+        f"Name: {fmt(patient_file.first_name, '')} {fmt(patient_file.last_name, '')}\n"
+        f"Geburtsdatum: {fmt_date(patient_file.birth_date)}\n"
+        f"Ethnie: {fmt(patient_file.ethnic_origin)}\n"
+        f"Größe: {fmt(patient_file.height)} cm\n"
+        f"Gewicht: {fmt(patient_file.weight)} kg\n"
+        f"Geschlecht (medizinisch): {fmt(patient_file.gender_medical)}\n"
+        + "".join(sections)
+    )
