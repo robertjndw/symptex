@@ -13,7 +13,7 @@ class CustomState(TypedDict):
     patient_details: str
     patient_doc_md: list[dict]
     tool_calls: list
-    docs_present: bool
+    docs_available: bool
     attach_docs: bool
     hard_error: bool
     docs_summary: str

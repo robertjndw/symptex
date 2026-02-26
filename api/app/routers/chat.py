@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.db.db_utils import has_anamdocs
 from app.db.db import get_db
 from app.db.models import ChatSession, ChatMessage, PatientFile, AnamDoc
 from app.utils.pdf_utils import load_pdfs_as_base64
@@ -119,6 +120,7 @@ async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
                     patient_details=patient_details,
                     session_id=request.session_id,
                     previous_messages=messages,
+                    docs_available = has_anamdocs(db, patient_file.id),
                     attach_docs_flag=attach_docs_flag,
                 ):
                     llm_response += chunk
@@ -218,6 +220,7 @@ async def stream_response(
     patient_details: str,
     session_id: str,
     previous_messages: list,
+    docs_available: bool,
     attach_docs_flag: dict | None = None,
 ) -> AsyncGenerator[str, None]:
     """
@@ -243,6 +246,7 @@ async def stream_response(
         "condition": condition,
         "talkativeness": talkativeness,
         "patient_details": patient_details,
+        "docs_available": docs_available
     }
     symptex_model = build_symptex_model(initial_state)
     try:

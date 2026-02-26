@@ -132,12 +132,17 @@ async def patient_model_final(state: CustomState) -> dict:
     condition = state["condition"]
     talkativeness = state["talkativeness"]
     patient_details = state["patient_details"]
-    patient_doc_md = state.get("patient_doc_md", [])
+    docs_available = state.get("docs_available", False)
     docs_summary = state.get("docs_summary", "")
     llm = get_llm(model)
     logger.info("Calling final patient model %s", model)
 
-    prompt = patient_prompts.get_prompt(condition, talkativeness, patient_details, patient_doc_md, docs_summary)
+    prompt = patient_prompts.get_prompt(
+        patient_condition=condition,
+        talkativeness=talkativeness, 
+        patient_details=patient_details, 
+        docs_available=docs_available,
+        docs_summary=docs_summary)
 
     chain = prompt | llm
     response = await chain.ainvoke(state)
