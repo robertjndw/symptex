@@ -1,30 +1,15 @@
 import base64
-import json
 import logging
 import os
 from pathlib import Path
 
 import pymupdf
 
-from app.db.models import AnamDoc
-
 logger = logging.getLogger(__name__)
-container_dir = os.environ["ANAMNESIS_DIR"]
-def anamdoc_to_dict(doc: AnamDoc) -> dict:
-    return {
-        "id": doc.id,
-        "file_path": doc.file_path,
-        "type": doc.type,
-        "patient_file_id": doc.patient_file_id,
-        "description": doc.description,
-    }
+container_dir = os.environ.get("ANAMNESIS_DIR", "")
 
-def anamdocs_to_json(anamdocs):
-    dicts = [anamdoc_to_dict(doc) for doc in anamdocs]
-    return json.dumps(dicts, indent=2, ensure_ascii=False)
 
-def parse_pdf(pdf_path : str) -> str:
-    doc = pymupdf.open(container_dir + pdf_path)
+def _extract_text_from_open_doc(doc: pymupdf.Document) -> str:
     all_pages_text = []
 
     for page_index in range(doc.page_count):
@@ -40,8 +25,38 @@ def parse_pdf(pdf_path : str) -> str:
         page_output = f"--- PAGE {page_index + 1} ---\n{page_text}"
         all_pages_text.append(page_output)
 
-    doc.close()
     return "\n\n".join(all_pages_text)
+
+
+def parse_pdf(pdf_path: str) -> str:
+    resolved_path = container_dir + pdf_path if container_dir else pdf_path
+    doc = pymupdf.open(resolved_path)
+    try:
+        return _extract_text_from_open_doc(doc)
+    finally:
+        doc.close()
+
+
+def parse_pdf_bytes(pdf_bytes: bytes) -> str:
+    doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        return _extract_text_from_open_doc(doc)
+    finally:
+        doc.close()
+
+
+def encode_pdf_bytes_as_base64(pdf_bytes: bytes) -> str:
+    return base64.b64encode(pdf_bytes).decode("ascii")
+
+
+def load_pdf_bytes_as_base64(path: str) -> dict:
+    with open(path, "rb") as f:
+        pdf_bytes = f.read()
+    return {
+        "filename": Path(path).name,
+        "content_b64": encode_pdf_bytes_as_base64(pdf_bytes),
+    }
+
 
 def load_pdfs_as_base64(file_paths: list[str]) -> list[dict]:
     """
@@ -50,13 +65,7 @@ def load_pdfs_as_base64(file_paths: list[str]) -> list[dict]:
     docs: list[dict] = []
     for path in file_paths:
         try:
-            with open(path, "rb") as f:
-                pdf_bytes = f.read()
-            b64 = base64.b64encode(pdf_bytes).decode("ascii")
-            docs.append({
-                "filename": Path(path).name,
-                "content_b64": b64,
-            })
+            docs.append(load_pdf_bytes_as_base64(path))
         except Exception as e:
             # optionally log and skip problematic files
             logger.error("Error loading PDF %s: %s", path, e)

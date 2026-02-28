@@ -11,7 +11,6 @@ class CustomState(TypedDict):
     condition: str
     talkativeness: str
     patient_details: str
-    patient_doc_md: list[dict]
     tool_calls: list
     docs_available: bool
     attach_docs: bool

@@ -136,9 +136,10 @@ PATIENT_SUFFIX = """
                 """
 
 OPTIONS_TABLE = {
-    "schwerhÃ¶rig": "schwerhoerig",
-    "verdrÃ¤ngung": "verdraengung",
+    "schwerhoerig": "schwerhoerig",
+    "verdraengung": "verdraengung",
     "alzheimer": "alzheimer",
+    "default": "default",
 }
 
 FEW_SHOTS = {

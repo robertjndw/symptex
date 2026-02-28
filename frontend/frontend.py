@@ -20,7 +20,7 @@ AVAILABLE_MODELS = [
     "mistral-large-instruct",
     "qwen3-235b-a22b"
 ]
-PATIENT_ROLES = ["default", "alzheimer", "schwerhörig", "verdrängung"]
+PATIENT_ROLES = ["default", "alzheimer", "schwerhoerig", "verdraengung"]
 TALKATIVENESS_LEVELS = ["kurz angebunden", "ausgewogen", "ausschweifend"]
 
 # Setup logging
@@ -353,3 +353,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -6,6 +6,7 @@ from chains.chain_nodes import patient_model_final, tool_branching_node, make_or
     summary_node, docs_branching_node
 from chains.chain_tools import make_load_patient_files_tool
 from chains.custom_state import CustomState
+from chains.document_bundle_cache import DocumentBundleCache
 
 # Set up logging
 logger = logging.getLogger('uvicorn.error')
@@ -13,11 +14,11 @@ logger.setLevel(logging.DEBUG)
 #todo consider adding ls.traceable to LLM-calling nodes
 
 #todo update file loading and system prompt
-def build_symptex_model(initial_state: CustomState):
+def build_symptex_model(initial_state: CustomState, document_bundle_cache: DocumentBundleCache):
     logger.info("Building symptex model")
     workflow = StateGraph(state_schema=CustomState)
 
-    load_patient_docs_tool = make_load_patient_files_tool()
+    load_patient_docs_tool = make_load_patient_files_tool(document_bundle_cache)
     workflow.add_node("orchestrator_node", make_orchestrator_node([load_patient_docs_tool]))
     workflow.add_node("load_docs", make_load_docs_node(load_patient_docs_tool))
     workflow.add_node("summary_node", summary_node)

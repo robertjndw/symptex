@@ -21,9 +21,22 @@ CHATAI_API_KEY=insert_api_key
 LANGCHAIN_TRACING_V2=true
 LANGCHAIN_API_KEY=insert_langsmith_key
 ```
-2. In the root folder create an `.env` file to contain the folder where the Befunde are. The corresponding variable is:
+2. In the project root (`symptex/.env`), create an `.env` file.
+   This file is loaded into the `symptex` API container through `docker-compose.yml` (`env_file`).
+   Add the following variables:
 ```env
+# Required for local volume mount used by docker-compose
 HOST_ANAMNESIS_PATH={path to Befunde}
+
+# Required for ILuVI AnamDocs REST integration
+ILUVI_API_BASE_URL={base_url_of_ilvi_backend}
+
+# Optional (defaults shown)
+FILE_SERVER_ROUTE=/static
+ANAMDOCS_HTTP_TIMEOUT_SEC=10
+ANAMDOCS_MAX_DOCS=10
+ANAMDOCS_MAX_FILE_MB=10
+ANAMDOCS_MAX_TOTAL_MB=40
 ```
 3. Run `docker compose up --build` in the project's root directory.
 4. Interact with Symptex locally through [Streamlit frontend URL](http://localhost:8501).

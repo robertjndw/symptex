@@ -36,7 +36,7 @@ def make_load_docs_node(load_patient_docs_tool):
                 tool_output_text = await load_patient_docs_tool.ainvoke({})
             except Exception as e:
                 logger.exception("Error running load_patient_docs tool")
-                tool_output_text = f"[Error loading documents: {e}]"
+                tool_output_text = ""
 
             tool_messages.append(
                 ToolMessage(
