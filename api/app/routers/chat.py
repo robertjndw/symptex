@@ -110,6 +110,8 @@ async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
             attach_docs_flag = {"value": False}
             try:
                 messages = previous_messages + [HumanMessage(content=request.message)]
+                # Existence flag only: docs may exist even if loading/summarization fails this turn.
+                docs_available = has_anamdocs(db, patient_file.id)
                 logger.info("Beginning text streaming")
                 async for chunk in stream_response(
                     model=request.model,
@@ -117,7 +119,7 @@ async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
                     talkativeness=request.talkativeness,
                     patient_details=patient_details,
                     previous_messages=messages,
-                    docs_available=has_anamdocs(db, patient_file.id),
+                    docs_available=docs_available,
                     docs_cache=docs_cache,
                     attach_docs_flag=attach_docs_flag,
                 ):
@@ -203,6 +205,7 @@ async def stream_response(
         "condition": condition,
         "talkativeness": talkativeness,
         "patient_details": patient_details,
+        # Existence flag from DB/backend; not overwritten by in-turn load outcomes.
         "docs_available": docs_available,
     }
     symptex_model = build_symptex_model(initial_state, docs_cache)

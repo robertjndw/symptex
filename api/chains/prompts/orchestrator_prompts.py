@@ -15,9 +15,10 @@ def get_prompt():
       3. If no tool is applicable, simply produce the phrase: "NO_TOOL".
         
     Important constraints:
-    - Your output should always be plain text.
+    - You may call at most one tool in a single response.
     - For each tool, follow its description exactly (when to call it, how to use its output).
-    - If no tool applies: output ONLY the exact phrase "NO_TOOL".
+    - If a tool is needed, emit a tool call and do not add explanatory text.
+    - If no tool applies, output ONLY the exact phrase "NO_TOOL".
     - Do not speak in the voice of the patient.
     - Do not generate conversational dialogue.
     """),
