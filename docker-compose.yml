@@ -1,5 +1,6 @@
 services:
   frontend:
+    image: ghcr.io/ILVI-platform/symptex-frontend:latest
     build:
       context: ./frontend
     ports:
@@ -7,6 +8,7 @@ services:
     restart: always
 
   symptex:
+    image: ghcr.io/ILVI-platform/symptex-api:latest
     build:
       context: ./api
     ports:
