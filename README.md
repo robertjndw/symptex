@@ -37,7 +37,17 @@ ANAMDOCS_HTTP_TIMEOUT_SEC=10
 ANAMDOCS_MAX_DOCS=10
 ANAMDOCS_MAX_FILE_MB=10
 ANAMDOCS_MAX_TOTAL_MB=40
+
+# Optional: local-only debug login fallback for ILuVI session auth
+ILUVI_DEBUG_LOGIN_ENABLED=false
+ILUVI_DEBUG_LOGIN_TUM_ID=ADMIN1234
+ILUVI_DEBUG_LOGIN_ROLE=admin
+ILUVI_DEBUG_LOGIN_FIRST_NAME=Symptex
+ILUVI_DEBUG_LOGIN_LAST_NAME=Debug
 ```
+`ILUVI_DEBUG_LOGIN_ENABLED=true` is intended for local development only. It requires ILuVI to run with
+`ILVI_DEBUG=true` so `/auth/debug-login` is available. Do not enable this in production.
+
 3. Run `docker compose up --build` in the project's root directory.
 4. Interact with Symptex locally through [Streamlit frontend URL](http://localhost:8501).
 

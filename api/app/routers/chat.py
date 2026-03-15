@@ -73,6 +73,7 @@ async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
         return PlainTextResponse("Patient not found", status_code=404)
     patient_details = format_patient_details(patient_file)
 
+    #todo implement proper session management
     session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
     if not session:
         session = ChatSession(id=request.session_id, patient_file_id=request.patient_file_id)
