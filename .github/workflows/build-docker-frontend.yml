@@ -5,7 +5,6 @@ on:
     branches:
       - main
       - release/*
-    tags: '*'
   release:
     types:
       - created
@@ -13,6 +12,10 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build:
@@ -48,7 +51,7 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
-            type=ref,event=pr
+            type=ref,event=tag
 
       - name: Build and push Docker Image
         uses: docker/build-push-action@v5
