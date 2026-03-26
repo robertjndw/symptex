@@ -56,7 +56,7 @@ async def call_patient_model(state: CustomState):
     talkativeness = state.get("talkativeness")
     patient_details = state.get("patient_details")
 
-    logger.debug("Calling patient model {model} with condition {condition}, talkativeness {talkativeness} and patient_details {patient_details}")
+    logger.debug(f"Calling patient model {model} with condition {condition}, talkativeness {talkativeness} and patient_details {patient_details}")
 
     # Get appropriate prompt
     prompt = get_prompt(condition, talkativeness, patient_details)
