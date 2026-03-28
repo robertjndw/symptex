@@ -12,21 +12,32 @@ history-taking skills.
 
 ## Getting Started
 
-1. In the `api/chains/` folder, create an `.env` file to define and store the following required (sensitive) keys:
-
-```env
-CHATAI_API_URL=https://chat-ai.academiccloud.de/v1
-CHATAI_API_KEY=insert_api_key
-# For testing, optional:
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=insert_langsmith_key
-```
-2. In the project root (`symptex/.env`), create an `.env` file.
+1. In the project root (`symptex/.env`), create an `.env` file.
    This file is loaded into the `symptex` API container through `docker-compose.yml` (`env_file`).
    Add the following variables:
 ```env
 # Required for local volume mount used by docker-compose
 HOST_ANAMNESIS_PATH={path to Befunde}
+
+# Required for API database connection
+DATABASE_URL=postgresql://ilvi:ilvi@postgres:5432/ilvi
+
+# Required LLM provider selection
+LLM_PROVIDER=chatai # or ollama
+
+# Required for provider "chatai"
+LLM_CHATAI_BASE_URL=https://chat-ai.academiccloud.de/v1
+LLM_CHATAI_API_KEY={api_key}
+LLM_CHATAI_MODELS=qwen3-235b-a22b,llama-3.3-70b-instruct
+
+# Required for provider "ollama"
+LLM_OLLAMA_BASE_URL=http://host.docker.internal:11434
+LLM_OLLAMA_MODELS=gpt-oss:120b-cloud,llama3.2
+
+# Optional LLM tuning (defaults shown)
+LLM_TEMPERATURE=0.7
+LLM_TOP_P=0.8
+LLM_MAX_RETRIES=2
 
 # Required for ILuVI AnamDocs REST integration
 ILUVI_API_BASE_URL={base_url_of_ilvi_backend}
@@ -44,12 +55,16 @@ ILUVI_DEBUG_LOGIN_TUM_ID=ADMIN1234
 ILUVI_DEBUG_LOGIN_ROLE=admin
 ILUVI_DEBUG_LOGIN_FIRST_NAME=Symptex
 ILUVI_DEBUG_LOGIN_LAST_NAME=Debug
+
+# Optional for LangSmith tracing
+LANGCHAIN_TRACING_V2=true
+LANGCHAIN_API_KEY=insert_langsmith_key
 ```
 `ILUVI_DEBUG_LOGIN_ENABLED=true` is intended for local development only. It requires ILuVI to run with
 `ILVI_DEBUG=true` so `/auth/debug-login` is available. Do not enable this in production.
 
-3. Run `docker compose up --build` in the project's root directory.
-4. Interact with Symptex locally through [Streamlit frontend URL](http://localhost:8501).
+2. Run `docker compose up --build` in the project's root directory.
+3. Interact with Symptex locally through [Streamlit frontend URL](http://localhost:8501).
 
 ## Endpoints
 

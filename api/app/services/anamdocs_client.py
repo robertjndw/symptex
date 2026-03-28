@@ -77,7 +77,7 @@ class AnamDocsClient:
 
     def list_anamdocs(self, patient_file_id: int) -> list[AnamDocResponse]:
         self._validate_base_url()
-        url = f"{self.api_base_url}/patientFiles/{patient_file_id}/anamneses/anamDoc"
+        url = f"{self.api_base_url}/patientFiles/{patient_file_id}/anamneses/anam-doc"
         try:
             response = self._get_with_optional_debug_reauth(url)
         except requests.RequestException as exc:

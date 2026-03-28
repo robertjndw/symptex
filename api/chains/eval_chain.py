@@ -1,26 +1,13 @@
-import os
-from dotenv import load_dotenv
-
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.prompts.chat import SystemMessagePromptTemplate
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 import logging
 
-# Load env variables
-load_dotenv()
+from chains.llm import get_llm
 
-# Set up logging
-logger = logging.getLogger('eval_chain')
+logger = logging.getLogger("eval_chain")
 logger.setLevel(logging.DEBUG)
-
-# Set up env variables
-CHATAI_API_URL = os.environ.get("CHATAI_API_URL")
-CHATAI_API_KEY = os.environ.get("CHATAI_API_KEY")
-if not CHATAI_API_URL or not CHATAI_API_KEY:
-    logger.error("CHATAI environment variable not set, setting to default")
-    raise ValueError("ERROR: Environment variables not set")
 
 def get_eval_prompt():
     return ChatPromptTemplate.from_messages([
@@ -74,27 +61,21 @@ def get_eval_prompt():
         MessagesPlaceholder(variable_name="messages"),
     ])
 
-def get_rating_llm():
-    return ChatOpenAI(
-        openai_api_base=CHATAI_API_URL,
-        openai_api_key=CHATAI_API_KEY,
-        model="qwen3-235b-a22b", 
-        temperature=0.0,
-    )
-
-async def eval_history(messages):
+async def eval_history(messages: list, model: str):
     try:
         prompt = get_eval_prompt()
-        llm = get_rating_llm()
+        llm = get_llm(model)
         chain = prompt | llm
 
         logger.debug("Evaluating messages: %s", messages)
         async for chunk in chain.astream({"messages": messages}):
             if isinstance(chunk, (HumanMessage, AIMessage)):
                 yield chunk.content
+            elif hasattr(chunk, "content"):
+                yield chunk.content
             else:
                 yield str(chunk)
-            
+
     except Exception as e:
         logger.error("Error in eval_history: %s", str(e))
         yield f"Entschuldigung, es ist ein Fehler aufgetreten: {str(e)}"

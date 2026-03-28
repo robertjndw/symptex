@@ -10,16 +10,6 @@ import streamlit as st
 
 # Constants
 API_URL = "http://host.docker.internal:8000/api/v1"
-
-#todo update with Ollama models
-AVAILABLE_MODELS = [
-    "gemma-3-27b-it",
-    "llama-3.3-70b-instruct",
-    "llama-3.1-sauerkrautlm-70b-instruct",
-    "qwq-32b",
-    "mistral-large-instruct",
-    "qwen3-235b-a22b"
-]
 PATIENT_ROLES = ["default", "alzheimer", "schwerhoerig", "verdraengung"]
 TALKATIVENESS_LEVELS = ["kurz angebunden", "ausgewogen", "ausschweifend"]
 
@@ -27,10 +17,59 @@ TALKATIVENESS_LEVELS = ["kurz angebunden", "ausgewogen", "ausschweifend"]
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-def init_session_state() -> None:
+@st.cache_data(ttl=30)
+def fetch_model_catalog() -> tuple[list[str], str | None, str | None, str | None]:
+    """Fetch model metadata from backend and normalize it for the UI."""
+    endpoint = f"{API_URL}/available-models"
+    try:
+        response = requests.get(endpoint, timeout=5)
+    except requests.RequestException as exc:
+        logger.error("Could not fetch model catalog from %s: %s", endpoint, exc)
+        return [], None, None, "Model list unavailable. Please try again later."
+
+    if response.status_code != 200:
+        logger.error(
+            "Model catalog request failed with status %s: %s",
+            response.status_code,
+            response.text,
+        )
+        return [], None, None, f"Model list unavailable (status {response.status_code})."
+
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        logger.error("Invalid JSON from model catalog endpoint: %s", exc)
+        return [], None, None, "Model list unavailable due to invalid server response."
+
+    provider = str(payload.get("provider", "")).strip() or None
+
+    models: list[str] = []
+    for item in payload.get("models", []):
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("id", "")).strip()
+        if model_id and model_id not in models:
+            models.append(model_id)
+
+    if not models:
+        return [], None, provider, "No models configured on backend."
+
+    default_model = str(payload.get("default_model", "")).strip() or models[0]
+    if default_model not in models:
+        default_model = models[0]
+
+    return models, default_model, provider, None
+
+
+def init_session_state(default_model: str | None, available_models: list[str]) -> None:
     """Initialize Streamlit session state variables"""
+    if "model" not in st.session_state:
+        st.session_state.model = default_model or (available_models[0] if available_models else "")
+
+    if available_models and st.session_state.model not in available_models:
+        st.session_state.model = default_model or available_models[0]
+
     if "condition" not in st.session_state:
-        st.session_state.model = "qwen3-235b-a22b"
         st.session_state.condition = "alzheimer"
         st.session_state.talkativeness = "kurz angebunden"
         st.session_state.session_id = str(uuid.uuid4())
@@ -98,11 +137,25 @@ Notfallmäßige Vorstellung mit dem RTW bei Sturz auf die rechte Hüfte im häus
 * BMI: 20,5"""
 )
 
-def setup_sidebar() -> None:
+def setup_sidebar(
+    available_models: list[str],
+    model_fetch_error: str | None,
+    provider: str | None,
+) -> None:
     """Setup sidebar controls"""
-    st.sidebar.selectbox("Modell", options=AVAILABLE_MODELS, key="model")
+    if provider:
+        st.sidebar.caption(f"LLM Provider: {provider}")
+
+    if model_fetch_error:
+        st.sidebar.warning(model_fetch_error)
+
+    if available_models:
+        st.sidebar.selectbox("Modell", options=available_models, key="model")
+    else:
+        st.sidebar.selectbox("Modell", options=["No model available"], disabled=True)
+
     st.sidebar.selectbox("Patientenrolle", options=PATIENT_ROLES, key="condition")
-    st.sidebar.selectbox("Gesprächsverhalten", options=TALKATIVENESS_LEVELS, key="talkativeness")
+    st.sidebar.selectbox("Gespraechsverhalten", options=TALKATIVENESS_LEVELS, key="talkativeness")
 
 def handle_chat_reset() -> None:
     """Handle chat reset functionality"""
@@ -128,6 +181,10 @@ def handle_chat_eval() -> None:
         return
 
     try:
+        if not st.session_state.get("model"):
+            st.warning("Kein Modell ausgewaehlt.")
+            return
+
         messages = [
             {"role": msg["role"], "output": msg["output"]} for msg in st.session_state.messages
         ]
@@ -136,9 +193,13 @@ def handle_chat_eval() -> None:
         response_placeholder = st.chat_message("patient").markdown("")
 
         with st.spinner("Anamnese Feedback wird erstellt..."):
-            with requests.post(f"{API_URL}/eval", json={"messages": messages}, stream=True) as response:
+            with requests.post(
+                f"{API_URL}/eval",
+                json={"model": st.session_state.model, "messages": messages},
+                stream=True,
+            ) as response:
                 if response.status_code == 200:
-                    evaluation_text = process_llm_response(response, response_placeholder)
+                    evaluation_text, _ = process_llm_response(response, response_placeholder)
                     st.session_state.messages.append({
                         "role": "patient",
                         "output": evaluation_text,
@@ -298,11 +359,12 @@ def main() -> None:
     """Main application function"""
     setup_header_layout()
     img_base64 = load_patient_image()
-    init_session_state()
+    available_models, default_model, provider, model_fetch_error = fetch_model_catalog()
+    init_session_state(default_model, available_models)
     
     create_header(img_base64)
     display_patient_info()
-    setup_sidebar()
+    setup_sidebar(available_models, model_fetch_error, provider)
 
     # Display chat history
     for message in st.session_state.messages:
@@ -311,7 +373,11 @@ def main() -> None:
                 st.markdown(message["output"])
 
     # Handle user input
-    if prompt := st.chat_input("Fange hier ein Gespräch an..."):
+    if prompt := st.chat_input("Fange hier ein Gespraech an...", disabled=not available_models):
+        if not st.session_state.model:
+            st.error("Kein Modell verfuegbar. Bitte Backend-Konfiguration pruefen.")
+            return
+
         with st.chat_message("user"):
             st.markdown(prompt)
 
@@ -327,14 +393,14 @@ def main() -> None:
         }
 
         with st.spinner("Denkt nach..."):
-            response_placeholder = st.chat_message("assistant").markdown("")
+            response_placeholder = st.chat_message("patient").markdown("")
             with requests.post(API_URL + "/chat", json=data, stream=True) as response:
 
                 if response.status_code == 200:
                     streamed_text, pdf_docs = process_llm_response(response, response_placeholder)
 
                     st.session_state.messages.append({
-                        "role": "assistant",
+                        "role": "patient",
                         "output": streamed_text,
                         "docs": pdf_docs,
                     })
@@ -353,4 +419,9 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
 

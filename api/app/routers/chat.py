@@ -3,7 +3,7 @@ import logging
 from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -16,6 +16,12 @@ from chains.chat_chain import build_symptex_model
 from chains.document_bundle_cache import DocumentBundleCache
 from chains.eval_chain import eval_history
 from chains.formatting import format_patient_details
+from chains.llm import (
+    InvalidModelError,
+    LLMConfigurationError,
+    get_available_models,
+    validate_requested_model,
+)
 
 logger = logging.getLogger("uvicorn.error")
 logging.basicConfig(
@@ -26,6 +32,7 @@ router = APIRouter()
 
 TARGET_NODE = "patient_model_final"
 ALLOWED_CONDITIONS = {"default", "alzheimer", "schwerhoerig", "verdraengung"}
+ALLOWED_TALKATIVENESS = {"kurz angebunden", "ausgewogen", "ausschweifend"}
 
 
 class ChatRequest(BaseModel):
@@ -38,35 +45,49 @@ class ChatRequest(BaseModel):
 
 
 class RateRequest(BaseModel):
+    model: str
     messages: list
+
+
+def _validate_model(requested_model: str) -> tuple[str | None, PlainTextResponse | None]:
+    try:
+        return validate_requested_model(requested_model), None
+    except InvalidModelError as exc:
+        logger.error("Model validation error: %s", exc)
+        return None, PlainTextResponse(str(exc), status_code=400)
+    except LLMConfigurationError as exc:
+        logger.error("LLM configuration error while validating model: %s", exc)
+        return None, PlainTextResponse(str(exc), status_code=500)
+
+
+@router.get("/available-models")
+async def available_models():
+    try:
+        return JSONResponse(get_available_models(), status_code=200)
+    except LLMConfigurationError as exc:
+        logger.error("LLM configuration error while listing models: %s", exc)
+        return PlainTextResponse(str(exc), status_code=500)
 
 
 @router.post("/chat")
 async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
     logger.debug("Received chat request: %s", request)
 
-    if not request.message:
+    if not request.message or not request.message.strip():
         logger.error("Empty message received")
-        raise PlainTextResponse("Message cannot be empty", status_code=400)
+        return PlainTextResponse("Message cannot be empty", status_code=400)
 
-    if request.model not in [
-        "gemma-3-27b-it",
-        "llama-3.3-70b-instruct",
-        "llama-3.1-sauerkrautlm-70b-instruct",
-        "qwq-32b",
-        "mistral-large-instruct",
-        "qwen3-235b-a22b",
-    ]:
-        logger.error("Invalid model: %s", request.model)
-        raise PlainTextResponse(f"Invalid model: {request.model}", status_code=400)
+    model, model_error = _validate_model(request.model)
+    if model_error is not None:
+        return model_error
 
     if request.condition not in ALLOWED_CONDITIONS:
         logger.error("Invalid condition: %s", request.condition)
-        raise PlainTextResponse(f"Invalid condition: {request.condition}", status_code=400)
+        return PlainTextResponse(f"Invalid condition: {request.condition}", status_code=400)
 
-    if request.talkativeness not in ["kurz angebunden", "ausgewogen", "ausschweifend"]:
+    if request.talkativeness not in ALLOWED_TALKATIVENESS:
         logger.error("Invalid talkativeness: %s", request.talkativeness)
-        raise PlainTextResponse(f"Invalid talkativeness: {request.talkativeness}", status_code=400)
+        return PlainTextResponse(f"Invalid talkativeness: {request.talkativeness}", status_code=400)
 
     patient_file = db.query(PatientFile).filter(PatientFile.id == request.patient_file_id).first()
     if not patient_file:
@@ -115,7 +136,7 @@ async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
                 docs_available = has_anamdocs(db, patient_file.id)
                 logger.info("Beginning text streaming")
                 async for chunk in stream_response(
-                    model=request.model,
+                    model=model,
                     condition=request.condition,
                     talkativeness=request.talkativeness,
                     patient_details=patient_details,
@@ -140,11 +161,13 @@ async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
                 )
                 db.add(llm_message)
                 db.commit()
-            finally:
-                db.close()
+            except Exception:
+                db.rollback()
+                raise
 
         return StreamingResponse(generate_and_store(), media_type="text/plain")
     except Exception as exc:
+        db.rollback()
         logger.error("Error in chat_with_llm endpoint: %s", str(exc))
         return PlainTextResponse("Internal server error", status_code=500)
 
@@ -160,13 +183,15 @@ async def reset_memory(session_id: str, db: Session = Depends(get_db)):
         logger.error("Error deleting session %s: %s", session_id, str(exc))
         db.rollback()
         return PlainTextResponse("Error deleting session", status_code=500)
-    finally:
-        db.close()
 
 
 @router.post("/eval")
 async def eval_chat(request: RateRequest):
     from langchain_core.messages import AIMessage, HumanMessage
+
+    model, model_error = _validate_model(request.model)
+    if model_error is not None:
+        return model_error
 
     async def generate_eval():
         try:
@@ -174,10 +199,9 @@ async def eval_chat(request: RateRequest):
             for msg in request.messages:
                 if msg["role"] == "user":
                     lc_messages.append(HumanMessage(content=msg["output"]))
-                elif msg["role"] == "patient":
+                elif msg["role"] in {"patient", "assistant"}:
                     lc_messages.append(AIMessage(content=msg["output"]))
-
-            async for chunk in eval_history(lc_messages):
+            async for chunk in eval_history(lc_messages, model=model):
                 yield chunk
         except Exception as exc:
             logger.error("Error generating evaluation: %s", str(exc))
