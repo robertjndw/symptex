@@ -19,7 +19,7 @@ history-taking skills.
 # Required for local volume mount used by docker-compose
 HOST_ANAMNESIS_PATH={path to Befunde}
 
-# Required for API database connection
+# Optional for API database connection (defaults shown)
 DATABASE_URL=postgresql://ilvi:ilvi@postgres:5432/ilvi
 
 # Required LLM provider selection
@@ -60,6 +60,7 @@ ILUVI_DEBUG_LOGIN_LAST_NAME=Debug
 LANGCHAIN_TRACING_V2=true
 LANGCHAIN_API_KEY=insert_langsmith_key
 ```
+If `DATABASE_URL` is omitted or set to an empty value, the API falls back to `postgresql://ilvi:ilvi@postgres:5432/ilvi`.
 `ILUVI_DEBUG_LOGIN_ENABLED=true` is intended for local development only. It requires ILuVI to run with
 `ILVI_DEBUG=true` so `/auth/debug-login` is available. Do not enable this in production.
 
