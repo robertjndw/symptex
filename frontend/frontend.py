@@ -1,7 +1,6 @@
 import base64
 import json
 import logging
-import re
 import uuid
 from pathlib import Path
 
@@ -215,10 +214,9 @@ def process_llm_response(
     response: requests.Response,
     response_placeholder: st.delta_generator.DeltaGenerator,
 ) -> tuple[str, list[dict]]:
-    """Process streaming response from LLM, strip <think> tags, and capture attach_docs event."""
+    """Process streaming response from LLM and capture attach_docs events."""
     streamed_text = ""
     buffer = ""
-    think_tags_removed = False
     pdf_docs: list[dict] = []
 
     for chunk in response.iter_content(chunk_size=None):
@@ -226,21 +224,12 @@ def process_llm_response(
         if not buffer:
             continue
 
-        buffer, think_tags_removed, waiting_for_think_end = _strip_think_tags_if_needed(
-            buffer, think_tags_removed
-        )
-        if waiting_for_think_end:
-            # we don't show anything until </think> is seen
-            continue
-
         is_event, pdf_docs, buffer = _handle_json_event_if_any(buffer, pdf_docs)
         if is_event:
             # JSON events (like attach_docs) are not shown as text
             continue
 
-        streamed_text, buffer, think_tags_removed = _consume_text_buffer(
-            buffer, streamed_text, think_tags_removed, response_placeholder
-        )
+        streamed_text, buffer = _consume_text_buffer(buffer, streamed_text, response_placeholder)
 
     # Final render (without cursor, etc.)
     response_placeholder.markdown(streamed_text)
@@ -284,26 +273,6 @@ def _accumulate_chunk(buffer: str, chunk: bytes) -> str:
     return buffer + chunk.decode(errors="ignore")
 
 
-def _strip_think_tags_if_needed(
-    buffer: str, think_tags_removed: bool
-) -> tuple[str, bool, bool]:
-    """
-    Remove <think>...</think> block once, if present and complete.
-    Returns (new_buffer, think_tags_removed, waiting_for_closing_tag).
-    """
-    if think_tags_removed or "<think>" not in buffer:
-        return buffer, think_tags_removed, False
-
-    # Wait for closing tag before stripping
-    if "</think>\n" not in buffer:
-        # still waiting for the rest of the think block
-        return buffer, think_tags_removed, True
-
-    # Remove the <think>...</think>\n (and an optional extra newline)
-    buffer = re.sub(r'^<think>[\s\S]*?</think>\n\n?', '', buffer)
-    return buffer, True, False
-
-
 def _handle_json_event_if_any(
     buffer: str, pdf_docs: list[dict]
 ) -> tuple[bool, list[dict], str]:
@@ -333,27 +302,20 @@ def _handle_json_event_if_any(
 def _consume_text_buffer(
     buffer: str,
     streamed_text: str,
-    think_tags_removed: bool,
     response_placeholder: st.delta_generator.DeltaGenerator,
-) -> tuple[str, str, bool]:
+) -> tuple[str, str]:
     """
-    Append current buffer to streamed_text (if appropriate) and update the UI.
-    Returns (new_streamed_text, new_buffer, new_think_tags_removed).
+    Append current buffer to streamed_text and update the UI.
+    Returns (new_streamed_text, new_buffer).
     """
     if not buffer:
-        return streamed_text, buffer, think_tags_removed
+        return streamed_text, buffer
 
-    # Only display when either:
-    # - we've already removed think tags, or
-    # - there is no <think> at all in the remaining buffer.
-    if think_tags_removed or "<think>" not in buffer:
-        streamed_text += buffer
-        buffer = ""
-        if not think_tags_removed:
-            think_tags_removed = True
-        response_placeholder.markdown(streamed_text)
+    streamed_text += buffer
+    buffer = ""
+    response_placeholder.markdown(streamed_text)
 
-    return streamed_text, buffer, think_tags_removed
+    return streamed_text, buffer
 
 def main() -> None:
     """Main application function"""

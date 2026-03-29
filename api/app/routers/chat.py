@@ -12,6 +12,7 @@ from app.db.db import get_db
 from app.db.db_utils import has_anamdocs
 from app.db.models import ChatMessage, ChatSession, PatientFile
 from app.services.anamdocs_client import AnamDocsClient
+from app.utils.stream_filters import StreamDelimitedBlockFilter
 from chains.chat_chain import build_symptex_model
 from chains.document_bundle_cache import DocumentBundleCache
 from chains.eval_chain import eval_history
@@ -29,6 +30,8 @@ router = APIRouter()
 TARGET_NODE = "patient_model_final"
 ALLOWED_CONDITIONS = {"default", "alzheimer", "schwerhoerig", "verdraengung"}
 ALLOWED_TALKATIVENESS = {"kurz angebunden", "ausgewogen", "ausschweifend"}
+MODEL_INTERNAL_BLOCK_START = "<think>"
+MODEL_INTERNAL_BLOCK_END = "</think>"
 
 
 class ChatRequest(BaseModel):
@@ -230,6 +233,10 @@ async def stream_response(
         "docs_available": docs_available,
     }
     symptex_model = build_symptex_model(docs_cache)
+    internal_block_filter = StreamDelimitedBlockFilter(
+        start_delimiter=MODEL_INTERNAL_BLOCK_START,
+        end_delimiter=MODEL_INTERNAL_BLOCK_END,
+    )
 
     try:
         async for mode, chunk in symptex_model.astream(
@@ -240,11 +247,16 @@ async def stream_response(
                 msg, metadata = chunk
                 node_name = metadata.get("langgraph_node")
                 if node_name == TARGET_NODE and msg.content and not isinstance(msg, HumanMessage):
-                    yield msg.content
+                    clean_chunk = internal_block_filter.consume(msg.content)
+                    if clean_chunk:
+                        yield clean_chunk
             elif mode == "values":
                 state = chunk
                 if attach_docs_flag is not None and state.get("attach_docs"):
                     attach_docs_flag["value"] = True
+        trailing_chunk = internal_block_filter.flush()
+        if trailing_chunk:
+            yield trailing_chunk
     except Exception as exc:
         logger.error("Error while streaming response: %s", str(exc))
         yield f"Entschuldigung, es ist ein Fehler aufgetreten: {str(exc)}"

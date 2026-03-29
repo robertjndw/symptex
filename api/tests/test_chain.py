@@ -1,4 +1,5 @@
 import os
+import asyncio
 from types import SimpleNamespace
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
@@ -166,3 +167,81 @@ def test_chat_valid_request_streams_response(monkeypatch):
 
     assert response.status_code == 200
     assert "Antwort" in response.text
+
+
+def test_stream_response_strips_think_tags_across_chunks(monkeypatch):
+    class _FakeModel:
+        async def astream(self, *_args, **_kwargs):
+            yield (
+                "messages",
+                (SimpleNamespace(content="<thi"), {"langgraph_node": chat.TARGET_NODE}),
+            )
+            yield (
+                "messages",
+                (SimpleNamespace(content="nk>hidden"), {"langgraph_node": chat.TARGET_NODE}),
+            )
+            yield (
+                "messages",
+                (
+                    SimpleNamespace(content=" text</thin"),
+                    {"langgraph_node": chat.TARGET_NODE},
+                ),
+            )
+            yield (
+                "messages",
+                (
+                    SimpleNamespace(content="k>Hello there"),
+                    {"langgraph_node": chat.TARGET_NODE},
+                ),
+            )
+
+    monkeypatch.setattr(chat, "build_symptex_model", lambda _docs_cache: _FakeModel())
+
+    async def _collect() -> str:
+        parts = []
+        async for chunk in chat.stream_response(
+            model="model-a",
+            condition="default",
+            talkativeness="ausgewogen",
+            patient_details="details",
+            previous_messages=[],
+            docs_available=False,
+            docs_cache=SimpleNamespace(),
+        ):
+            parts.append(chunk)
+        return "".join(parts)
+
+    output = asyncio.run(_collect())
+    assert output == "Hello there"
+
+
+def test_stream_response_keeps_normal_text_with_partial_tag_prefix(monkeypatch):
+    class _FakeModel:
+        async def astream(self, *_args, **_kwargs):
+            yield (
+                "messages",
+                (SimpleNamespace(content="normal text "), {"langgraph_node": chat.TARGET_NODE}),
+            )
+            yield (
+                "messages",
+                (SimpleNamespace(content="<t"), {"langgraph_node": chat.TARGET_NODE}),
+            )
+
+    monkeypatch.setattr(chat, "build_symptex_model", lambda _docs_cache: _FakeModel())
+
+    async def _collect() -> str:
+        parts = []
+        async for chunk in chat.stream_response(
+            model="model-a",
+            condition="default",
+            talkativeness="ausgewogen",
+            patient_details="details",
+            previous_messages=[],
+            docs_available=False,
+            docs_cache=SimpleNamespace(),
+        ):
+            parts.append(chunk)
+        return "".join(parts)
+
+    output = asyncio.run(_collect())
+    assert output == "normal text <t"
