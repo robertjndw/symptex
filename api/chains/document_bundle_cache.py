@@ -14,7 +14,7 @@ from app.services.anamdocs_client import (
 )
 from app.utils.pdf_utils import encode_pdf_bytes_as_base64, parse_pdf_bytes
 
-logger = logging.getLogger("uvicorn.error")
+logger = logging.getLogger(__name__)
 
 
 class DocumentBundle(TypedDict):

@@ -8,9 +8,7 @@ from chains.chain_tools import make_load_patient_files_tool
 from chains.custom_state import CustomState
 from chains.document_bundle_cache import DocumentBundleCache
 
-# Set up logging
-logger = logging.getLogger('uvicorn.error')
-logger.setLevel(logging.DEBUG)
+logger = logging.getLogger(__name__)
 #todo consider adding ls.traceable to LLM-calling nodes
 
 #todo update file loading and system prompt

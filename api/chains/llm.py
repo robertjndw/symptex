@@ -8,8 +8,7 @@ from dotenv import load_dotenv
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
-logger = logging.getLogger("llm")
-logger.setLevel(logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 

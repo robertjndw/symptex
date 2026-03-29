@@ -10,8 +10,7 @@ from chains.custom_state import CustomState
 from chains.llm import get_llm
 from chains.prompts import summarizer_prompts
 
-logger = logging.getLogger("uvicorn.error")
-logger.setLevel(logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 def strip_think_tags(text: str) -> str:

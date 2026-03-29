@@ -23,11 +23,7 @@ from chains.llm import (
     validate_requested_model,
 )
 
-logger = logging.getLogger("uvicorn.error")
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(filename)s:%(lineno)d %(funcName)s() - %(message)s",
-)
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 TARGET_NODE = "patient_model_final"

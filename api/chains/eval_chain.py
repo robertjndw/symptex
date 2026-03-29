@@ -6,8 +6,7 @@ import logging
 
 from chains.llm import get_llm
 
-logger = logging.getLogger("eval_chain")
-logger.setLevel(logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 def get_eval_prompt():
     return ChatPromptTemplate.from_messages([
