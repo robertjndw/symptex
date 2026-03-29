@@ -151,6 +151,10 @@ async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
                 if attach_docs_flag.get("value"):
                     docs = docs_cache.get_frontend_docs()
                     if docs:
+                        # TODO(protocol): This app currently mixes plain text streaming with a
+                        # trailing raw JSON control payload. Coalesced chunks can make frontend
+                        # detection ambiguous. Migrate backend+frontend together to an explicit
+                        # framed event protocol (e.g. EVENT:/SSE/NDJSON) with incremental parsing.
                         yield "\n" + json.dumps({"event": "attach_docs", "docs": docs})
 
                 llm_message = ChatMessage(

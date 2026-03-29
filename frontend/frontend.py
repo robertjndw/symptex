@@ -280,6 +280,10 @@ def _handle_json_event_if_any(
     Detect and handle JSON events in the buffer.
     Returns (is_event, updated_pdf_docs, new_buffer).
     """
+    # TODO(protocol): Current event detection assumes the whole buffer is one JSON object.
+    # If transport coalesces data (e.g., text + "\n{...}" in one chunk), control JSON can
+    # leak into rendered chat text. Migrate to an explicit framed protocol (e.g. EVENT:/SSE/
+    # NDJSON) and an incremental line-based parser.
     stripped = buffer.strip()
     if not (stripped.startswith("{") and stripped.endswith("}")):
         return False, pdf_docs, buffer
