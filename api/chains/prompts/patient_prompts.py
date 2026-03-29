@@ -19,6 +19,7 @@ def build_system_prompt(base_prompt: str, few_shot_msgs : list, talkativeness: s
     initial_messages.extend([SystemMessagePromptTemplate.from_template("Example interaction begin:")])
     initial_messages.extend(few_shot_msgs)
     initial_messages.extend([SystemMessagePromptTemplate.from_template("Example interaction end. Actual messages begin from here:")])
+    initial_messages.extend([MessagesPlaceholder(variable_name="messages")])
     return ChatPromptTemplate.from_messages(initial_messages).partial(
         talkativeness=talkativeness,
         patient_details=patient_details,
@@ -43,8 +44,7 @@ Verhalte dich wie eine echte Patientin bzw. ein echter Patient:
 """
 DEFAULT_FEW_SHOT = [HumanMessagePromptTemplate.from_template("Welche Medikamente nehmen Sie?"),
             AIMessagePromptTemplate.from_template("Schauen Sie, hier sind meine Unterlagen. Da ist der Medikationsplan dabei."),
-            MessagesPlaceholder(variable_name="messages")]
-
+            ]
 BASE_ALZHEIMER_PROMPT = """
 /nothink
 Du bist eine Patientin bzw. ein Patient mit schwerem Alzheimer und sprichst mit einer Ärztin oder einem Arzt.
@@ -64,8 +64,7 @@ ALZHEIMER_FEW_SHOT = [HumanMessagePromptTemplate.from_template("Wissen Sie was p
             AIMessagePromptTemplate.from_template("Ich ... *kratzt sich den Kopf* ... ich weiß es nicht ..."),
             HumanMessagePromptTemplate.from_template("Welche anderen Erkrankungen haben Sie?"),
             AIMessagePromptTemplate.from_template("Oh, uh... *Schweigen*"),
-            MessagesPlaceholder(variable_name="messages")]
-
+            ]
 BASE_SCHWERHOERIG_PROMPT = """
 /nothink
 Du bist eine Patientin bzw. ein Patient mit Schwerhörigkeit und sprichst mit einer Ärtztin oder einem Arzt.
@@ -86,8 +85,7 @@ SCHWERHOERIG_FEW_SHOT = [HumanMessagePromptTemplate.from_template("Wie fühlen S
             AIMessagePromptTemplate.from_template("Wie bitte? Können Sie das nochmal sagen?"),
             HumanMessagePromptTemplate.from_template("Haben Sie Schmerzen?"),
             AIMessagePromptTemplate.from_template("Oh, das habe ich nicht ganz verstanden... Schmerzen? Nein, ich glaube nicht."),
-            MessagesPlaceholder(variable_name="messages")]
-
+            ]
 BASE_VERDRAENGUNG_PROMPT = """
 /nothink
 Du bist eine Patientin bzw. ein Patient, der/die Krankheitsthemen verdrängt und sprichst mit einer Ärtztin oder einem Arzt.
@@ -108,9 +106,7 @@ VERDRAENGUNG_FEW_SHOT = [HumanMessagePromptTemplate.from_template("Wie fühlen S
             AIMessagePromptTemplate.from_template("Ach, mir geht es blendend, ich weiß gar nicht wieso ich hier bin. *lächelt*"),
             HumanMessagePromptTemplate.from_template("Wie lange haben Sie schon Krebs? Sind sie da in Behandlung?"),
             AIMessagePromptTemplate.from_template("*Schulterzucken* Lange halt..."),
-            MessagesPlaceholder(variable_name="messages")]
-
-
+            ]
 PATIENT_SUFFIX = """
                 Halte dich strikt an diese Regeln:
                 * Antworte IMMER in flüssigem Deutsch – die Länge und Klarheit deiner Antworten dürfen jedoch durch deine Erkrankung eingeschränkt sein.
@@ -153,3 +149,4 @@ PROMPTS = {
     "schwerhoerig": BASE_SCHWERHOERIG_PROMPT,
     "verdraengung": BASE_VERDRAENGUNG_PROMPT,
 }
+
