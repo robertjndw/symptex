@@ -233,7 +233,7 @@ async def stream_response(
         # Existence flag from DB/backend; not overwritten by in-turn load outcomes.
         "docs_available": docs_available,
     }
-    symptex_model = build_symptex_model(initial_state, docs_cache)
+    symptex_model = build_symptex_model(docs_cache)
 
     try:
         async for mode, chunk in symptex_model.astream(

@@ -14,7 +14,7 @@ logger.setLevel(logging.DEBUG)
 #todo consider adding ls.traceable to LLM-calling nodes
 
 #todo update file loading and system prompt
-def build_symptex_model(initial_state: CustomState, document_bundle_cache: DocumentBundleCache):
+def build_symptex_model(document_bundle_cache: DocumentBundleCache):
     logger.info("Building symptex model")
     workflow = StateGraph(state_schema=CustomState)
 
