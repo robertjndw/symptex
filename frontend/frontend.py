@@ -1,4 +1,5 @@
 import base64
+import binascii
 import json
 import logging
 import uuid
@@ -248,7 +249,12 @@ def render_vorbefunde_docs(pdf_docs):
             if not content_b64:
                 continue
 
-            pdf_bytes = base64.b64decode(content_b64)
+            try:
+                pdf_bytes = base64.b64decode(content_b64, validate=True)
+            except (binascii.Error, ValueError) as exc:
+                logger.error("Invalid base64 content for PDF '%s': %s", filename, exc)
+                st.warning(f"PDF konnte nicht geladen werden: {filename}")
+                continue
 
             # Download button
             st.download_button(
