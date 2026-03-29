@@ -28,8 +28,32 @@ def _extract_text_from_open_doc(doc: pymupdf.Document) -> str:
     return "\n\n".join(all_pages_text)
 
 
+def _resolve_pdf_path(pdf_path: str) -> str:
+    """
+    Resolve a PDF path safely against ANAMNESIS_DIR when configured.
+    Prevents path traversal outside the configured base directory.
+    """
+    if not container_dir:
+        return pdf_path
+
+    base_dir = Path(container_dir).resolve()
+    requested_path = Path(pdf_path)
+
+    # Keep all paths anchored under base_dir, even if pdf_path is absolute.
+    if requested_path.anchor:
+        requested_path = Path(*requested_path.parts[1:]) if len(requested_path.parts) > 1 else Path()
+
+    resolved_path = (base_dir / requested_path).resolve()
+    try:
+        resolved_path.relative_to(base_dir)
+    except ValueError as exc:
+        raise ValueError(f"Invalid pdf path outside ANAMNESIS_DIR: {pdf_path}") from exc
+
+    return str(resolved_path)
+
+
 def parse_pdf(pdf_path: str) -> str:
-    resolved_path = container_dir + pdf_path if container_dir else pdf_path
+    resolved_path = _resolve_pdf_path(pdf_path)
     doc = pymupdf.open(resolved_path)
     try:
         return _extract_text_from_open_doc(doc)
