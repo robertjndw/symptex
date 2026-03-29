@@ -3,7 +3,7 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://ilvi:ilvi@postgres:5432/ilvi").strip()
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is required")
 

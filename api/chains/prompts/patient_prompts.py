@@ -1,5 +1,3 @@
-﻿import copy
-
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, AIMessagePromptTemplate, \
     SystemMessagePromptTemplate
 from langchain_core.prompts import MessagesPlaceholder

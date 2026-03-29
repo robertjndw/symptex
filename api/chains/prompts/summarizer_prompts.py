@@ -18,6 +18,6 @@ def get_prompt():
             
             Kurz, klar, strukturiert.
             Nur relevante Inhalte zusammenfassen, wie sie genau im Text beschrieben sind.
-            Falls keine medizinischen Informationen enthalten sind: „Keine auswertbaren medizinischen Informationen.
+            Falls keine medizinischen Informationen enthalten sind: „Keine auswertbaren medizinischen Informationen.“
             """),
         MessagesPlaceholder(variable_name="messages"), ])
