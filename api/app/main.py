@@ -7,7 +7,10 @@ from fastapi import FastAPI
 
 from app.db import models
 from app.db.db import engine
+from app.utils.env import read_bool_env
 
+def is_dev_mode_enabled() -> bool:
+    return read_bool_env("SYMPTEX_DEV_MODE", default=False)
 
 def configure_logging() -> None:
     requested_level = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -29,7 +32,6 @@ def configure_logging() -> None:
         logger.warning("Invalid LOG_LEVEL=%r. Falling back to INFO.", requested_level)
     logger.info("Configured logging level: %s", logging.getLevelName(log_level))
 
-
 load_dotenv()
 configure_logging()
 
@@ -47,6 +49,11 @@ def read_root():
 
 # Include chat router
 app.include_router(chat.router, prefix="/api/v1")
+if is_dev_mode_enabled():
+    from app.routers import dev_chat  # noqa: E402
+
+    app.include_router(dev_chat.router, prefix="/api/v1")
+    logging.getLogger(__name__).info("Development mode enabled: /dev/chat and /dev/eval endpoints are active.")
 
 # Init database schema
 models.Base.metadata.create_all(bind=engine)

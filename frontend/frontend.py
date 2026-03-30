@@ -2,6 +2,7 @@ import base64
 import binascii
 import json
 import logging
+import os
 import uuid
 from pathlib import Path
 
@@ -17,57 +18,48 @@ TALKATIVENESS_LEVELS = ["kurz angebunden", "ausgewogen", "ausschweifend"]
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+DEFAULT_DEV_FRONTEND_MODELS = ["gpt-oss:120b-cloud", "llama3.2"]
+
+
+def _parse_csv_models(raw_models: str) -> list[str]:
+    parsed = [item.strip() for item in raw_models.split(",") if item.strip()]
+    # Preserve order but remove duplicates.
+    return list(dict.fromkeys(parsed))
+
+
 @st.cache_data(ttl=30)
-def fetch_model_catalog() -> tuple[list[str], str | None, str | None, str | None]:
-    """Fetch model metadata from backend and normalize it for the UI."""
-    endpoint = f"{API_URL}/available-models"
-    try:
-        response = requests.get(endpoint, timeout=5)
-    except requests.RequestException as exc:
-        logger.error("Could not fetch model catalog from %s: %s", endpoint, exc)
-        return [], None, None, "Model list unavailable. Please try again later."
+def load_dev_model_config() -> tuple[list[str], str | None, str | None]:
+    """Load dev frontend model configuration from local env."""
+    raw_models = os.getenv("DEV_FRONTEND_MODELS", "")
+    available_models = _parse_csv_models(raw_models)
+    if not available_models:
+        available_models = list(DEFAULT_DEV_FRONTEND_MODELS)
 
-    if response.status_code != 200:
-        logger.error(
-            "Model catalog request failed with status %s: %s",
-            response.status_code,
-            response.text,
-        )
-        return [], None, None, f"Model list unavailable (status {response.status_code})."
+    default_model = os.getenv("DEV_FRONTEND_DEFAULT_MODEL", "").strip() or available_models[0]
+    if default_model not in available_models:
+        default_model = available_models[0]
 
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        logger.error("Invalid JSON from model catalog endpoint: %s", exc)
-        return [], None, None, "Model list unavailable due to invalid server response."
-
-    provider = str(payload.get("provider", "")).strip() or None
-
-    models: list[str] = []
-    for item in payload.get("models", []):
-        if not isinstance(item, dict):
-            continue
-        model_id = str(item.get("id", "")).strip()
-        if model_id and model_id not in models:
-            models.append(model_id)
-
-    if not models:
-        return [], None, provider, "No models configured on backend."
-
-    default_model = str(payload.get("default_model", "")).strip() or models[0]
-    if default_model not in models:
-        default_model = models[0]
-
-    return models, default_model, provider, None
+    dev_frontend_key = os.getenv("DEV_FRONTEND_KEY", "").strip() or None
+    return available_models, default_model, dev_frontend_key
 
 
-def init_session_state(default_model: str | None, available_models: list[str]) -> None:
+def init_session_state(
+    default_model: str | None,
+    available_models: list[str],
+    dev_frontend_key: str | None,
+) -> None:
     """Initialize Streamlit session state variables"""
     if "model" not in st.session_state:
         st.session_state.model = default_model or (available_models[0] if available_models else "")
 
     if available_models and st.session_state.model not in available_models:
         st.session_state.model = default_model or available_models[0]
+
+    if "dev_frontend_key" not in st.session_state:
+        st.session_state.dev_frontend_key = dev_frontend_key
+
+    if dev_frontend_key:
+        st.session_state.dev_frontend_key = dev_frontend_key
 
     if "condition" not in st.session_state:
         st.session_state.condition = "alzheimer"
@@ -139,15 +131,11 @@ Notfallmäßige Vorstellung mit dem RTW bei Sturz auf die rechte Hüfte im häus
 
 def setup_sidebar(
     available_models: list[str],
-    model_fetch_error: str | None,
-    provider: str | None,
+    dev_frontend_key: str | None,
 ) -> None:
     """Setup sidebar controls"""
-    if provider:
-        st.sidebar.caption(f"LLM Provider: {provider}")
-
-    if model_fetch_error:
-        st.sidebar.warning(model_fetch_error)
+    if not dev_frontend_key:
+        st.sidebar.warning("DEV_FRONTEND_KEY is not configured. Dev chat endpoints will reject requests.")
 
     if available_models:
         st.sidebar.selectbox("Modell", options=available_models, key="model")
@@ -174,6 +162,14 @@ def handle_chat_reset() -> None:
         logger.error(f"Error resetting chat: {str(e)}")
         st.error(f"Could not reset chat memory: {str(e)}")
 
+
+def _dev_endpoint_headers() -> dict[str, str]:
+    headers = {}
+    if st.session_state.get("dev_frontend_key"):
+        headers["X-Dev-Frontend-Key"] = st.session_state.dev_frontend_key
+    return headers
+
+
 def handle_chat_eval() -> None:
     """Handle chat rating functionality."""
     if not st.session_state.messages:
@@ -181,6 +177,10 @@ def handle_chat_eval() -> None:
         return
 
     try:
+        if not st.session_state.get("dev_frontend_key"):
+            st.warning("DEV_FRONTEND_KEY fehlt. Bewertung ist nicht verfuegbar.")
+            return
+
         if not st.session_state.get("model"):
             st.warning("Kein Modell ausgewaehlt.")
             return
@@ -194,8 +194,9 @@ def handle_chat_eval() -> None:
 
         with st.spinner("Anamnese Feedback wird erstellt..."):
             with requests.post(
-                f"{API_URL}/eval",
+                f"{API_URL}/dev/eval",
                 json={"model": st.session_state.model, "messages": messages},
+                headers=_dev_endpoint_headers(),
                 stream=True,
             ) as response:
                 if response.status_code == 200:
@@ -331,12 +332,12 @@ def main() -> None:
     """Main application function"""
     setup_header_layout()
     img_base64 = load_patient_image()
-    available_models, default_model, provider, model_fetch_error = fetch_model_catalog()
-    init_session_state(default_model, available_models)
+    available_models, default_model, dev_frontend_key = load_dev_model_config()
+    init_session_state(default_model, available_models, dev_frontend_key)
     
     create_header(img_base64)
     display_patient_info()
-    setup_sidebar(available_models, model_fetch_error, provider)
+    setup_sidebar(available_models, dev_frontend_key)
 
     # Display chat history
     for message in st.session_state.messages:
@@ -345,7 +346,8 @@ def main() -> None:
                 st.markdown(message["output"])
 
     # Handle user input
-    if prompt := st.chat_input("Fange hier ein Gespraech an...", disabled=not available_models):
+    chat_disabled = (not available_models) or (not st.session_state.get("dev_frontend_key"))
+    if prompt := st.chat_input("Fange hier ein Gespraech an...", disabled=chat_disabled):
         if not st.session_state.model:
             st.error("Kein Modell verfuegbar. Bitte Backend-Konfiguration pruefen.")
             return
@@ -366,7 +368,12 @@ def main() -> None:
 
         with st.spinner("Denkt nach..."):
             response_placeholder = st.chat_message("patient").markdown("")
-            with requests.post(API_URL + "/chat", json=data, stream=True) as response:
+            with requests.post(
+                API_URL + "/dev/chat",
+                json=data,
+                headers=_dev_endpoint_headers(),
+                stream=True,
+            ) as response:
 
                 if response.status_code == 200:
                     streamed_text, pdf_docs = process_llm_response(response, response_placeholder)

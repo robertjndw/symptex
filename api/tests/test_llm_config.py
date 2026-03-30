@@ -8,8 +8,10 @@ LLM_ENV_KEYS = [
     "LLM_CHATAI_BASE_URL",
     "LLM_CHATAI_API_KEY",
     "LLM_CHATAI_MODELS",
+    "LLM_CHATAI_MODEL",
     "LLM_OLLAMA_BASE_URL",
     "LLM_OLLAMA_MODELS",
+    "LLM_OLLAMA_MODEL",
     "LLM_TEMPERATURE",
     "LLM_TOP_P",
     "LLM_MAX_RETRIES",
@@ -29,12 +31,13 @@ def test_ollama_config_parses_and_deduplicates_models(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "ollama")
     monkeypatch.setenv("LLM_OLLAMA_BASE_URL", "http://localhost:11434")
     monkeypatch.setenv("LLM_OLLAMA_MODELS", " model-a,model-b,model-a ,, ")
+    monkeypatch.setenv("LLM_OLLAMA_MODEL", "model-b")
 
     config = llm.get_llm_config()
 
     assert config.provider == "ollama"
     assert config.models == ("model-a", "model-b")
-    assert config.default_model == "model-a"
+    assert config.runtime_model == "model-b"
 
 
 def test_invalid_provider_raises_configuration_error(monkeypatch):
@@ -58,6 +61,7 @@ def test_chatai_factory_uses_requested_model(monkeypatch):
     monkeypatch.setenv("LLM_CHATAI_BASE_URL", "https://example.org/v1")
     monkeypatch.setenv("LLM_CHATAI_API_KEY", "dummy")
     monkeypatch.setenv("LLM_CHATAI_MODELS", "m1,m2")
+    monkeypatch.setenv("LLM_CHATAI_MODEL", "m1")
 
     chat_model = llm.get_llm("m2")
 
@@ -69,6 +73,7 @@ def test_ollama_factory_uses_requested_model(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "ollama")
     monkeypatch.setenv("LLM_OLLAMA_BASE_URL", "http://localhost:11434")
     monkeypatch.setenv("LLM_OLLAMA_MODELS", "foo,bar")
+    monkeypatch.setenv("LLM_OLLAMA_MODEL", "foo")
 
     chat_model = llm.get_llm("bar")
 
@@ -80,8 +85,28 @@ def test_invalid_requested_model_raises_model_error(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "ollama")
     monkeypatch.setenv("LLM_OLLAMA_BASE_URL", "http://localhost:11434")
     monkeypatch.setenv("LLM_OLLAMA_MODELS", "foo,bar")
+    monkeypatch.setenv("LLM_OLLAMA_MODEL", "foo")
 
     with pytest.raises(llm.InvalidModelError) as exc:
         llm.validate_requested_model("baz")
 
     assert "Available models: foo, bar." in str(exc.value)
+
+
+def test_missing_required_runtime_model_raises(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+    monkeypatch.setenv("LLM_OLLAMA_BASE_URL", "http://localhost:11434")
+    monkeypatch.setenv("LLM_OLLAMA_MODELS", "foo,bar")
+
+    with pytest.raises(llm.LLMConfigurationError):
+        llm.get_runtime_model()
+
+
+def test_runtime_model_is_resolved_from_required_env(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "chatai")
+    monkeypatch.setenv("LLM_CHATAI_BASE_URL", "https://example.org/v1")
+    monkeypatch.setenv("LLM_CHATAI_API_KEY", "dummy")
+    monkeypatch.setenv("LLM_CHATAI_MODELS", "m1,m2")
+    monkeypatch.setenv("LLM_CHATAI_MODEL", "m2")
+
+    assert llm.get_runtime_model() == "m2"

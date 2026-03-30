@@ -2,7 +2,6 @@ import logging
 import os
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any
 
 from dotenv import load_dotenv
 from langchain_ollama import ChatOllama
@@ -31,24 +30,13 @@ class InvalidModelError(LLMConfigError):
 class LLMConfig:
     provider: str
     models: tuple[str, ...]
-    default_model: str
+    runtime_model: str
     temperature: float
     top_p: float
     max_retries: int
     chatai_base_url: str | None = None
     chatai_api_key: str | None = None
     ollama_base_url: str | None = None
-
-    def to_available_models_payload(self) -> dict[str, Any]:
-        models_payload = [
-            {"id": model_id, "label": model_id, "default": model_id == self.default_model}
-            for model_id in self.models
-        ]
-        return {
-            "provider": self.provider,
-            "default_model": self.default_model,
-            "models": models_payload,
-        }
 
 
 def _read_required_env(name: str) -> str:
@@ -92,6 +80,16 @@ def _parse_models(raw_models: str, env_name: str) -> tuple[str, ...]:
     return deduped_models
 
 
+def _read_required_model_env(name: str, available_models: tuple[str, ...], provider: str) -> str:
+    runtime_model = _read_required_env(name)
+    if runtime_model not in available_models:
+        models = ", ".join(available_models)
+        raise LLMConfigurationError(
+            f"Invalid {name}='{runtime_model}' for provider '{provider}'. Available models: {models}."
+        )
+    return runtime_model
+
+
 @lru_cache(maxsize=1)
 def get_llm_config() -> LLMConfig:
     provider = os.getenv("LLM_PROVIDER", "").strip().lower()
@@ -105,10 +103,11 @@ def get_llm_config() -> LLMConfig:
 
     if provider == "chatai":
         models = _parse_models(_read_required_env("LLM_CHATAI_MODELS"), "LLM_CHATAI_MODELS")
+        runtime_model = _read_required_model_env("LLM_CHATAI_MODEL", models, provider)
         return LLMConfig(
             provider=provider,
             models=models,
-            default_model=models[0],
+            runtime_model=runtime_model,
             temperature=temperature,
             top_p=top_p,
             max_retries=max_retries,
@@ -117,10 +116,11 @@ def get_llm_config() -> LLMConfig:
         )
 
     models = _parse_models(_read_required_env("LLM_OLLAMA_MODELS"), "LLM_OLLAMA_MODELS")
+    runtime_model = _read_required_model_env("LLM_OLLAMA_MODEL", models, provider)
     return LLMConfig(
         provider=provider,
         models=models,
-        default_model=models[0],
+        runtime_model=runtime_model,
         temperature=temperature,
         top_p=top_p,
         max_retries=max_retries,
@@ -132,8 +132,8 @@ def clear_llm_config_cache() -> None:
     get_llm_config.cache_clear()
 
 
-def get_available_models() -> dict[str, Any]:
-    return get_llm_config().to_available_models_payload()
+def get_runtime_model() -> str:
+    return get_llm_config().runtime_model
 
 
 def validate_requested_model(model: str) -> str:

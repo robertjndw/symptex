@@ -25,14 +25,27 @@ DATABASE_URL=postgresql://ilvi:ilvi@postgres:5432/ilvi
 # Required LLM provider selection
 LLM_PROVIDER=chatai # or ollama
 
+# Optional: enable development-only endpoints (/api/v1/dev/chat, /api/v1/dev/eval)
+# Defaults to disabled when omitted.
+SYMPTEX_DEV_MODE=false
+
 # Required for provider "chatai"
 LLM_CHATAI_BASE_URL=https://chat-ai.academiccloud.de/v1
 LLM_CHATAI_API_KEY={api_key}
 LLM_CHATAI_MODELS=qwen3-235b-a22b,llama-3.3-70b-instruct
+LLM_CHATAI_MODEL=qwen3-235b-a22b # required runtime model for /chat and /eval
 
 # Required for provider "ollama"
 LLM_OLLAMA_BASE_URL=http://host.docker.internal:11434
 LLM_OLLAMA_MODELS=gpt-oss:120b-cloud,llama3.2
+LLM_OLLAMA_MODEL=gpt-oss:120b-cloud # required runtime model for /chat and /eval
+
+# Required only when SYMPTEX_DEV_MODE=true
+DEV_FRONTEND_KEY={shared_secret_between_frontend_and_api}
+
+# Optional for development frontend model picker (frontend service)
+DEV_FRONTEND_MODELS=gpt-oss:120b-cloud,llama3.2
+DEV_FRONTEND_DEFAULT_MODEL=gpt-oss:120b-cloud
 
 # Optional LLM tuning (defaults shown)
 LLM_TEMPERATURE=0.7
@@ -71,6 +84,7 @@ If `DATABASE_URL` is omitted or set to an empty value, the API falls back to `po
 
 - Streamlit frontend: <http://localhost:8501>
 - API: <http://localhost:8000>
+- Development model override endpoints (only when `SYMPTEX_DEV_MODE=true`): `POST /api/v1/dev/chat` and `POST /api/v1/dev/eval` (require `X-Dev-Frontend-Key`)
 
 ## Features
 

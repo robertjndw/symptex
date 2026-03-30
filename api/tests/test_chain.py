@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.db.db import get_db
 from app.db.models import ChatMessage, ChatSession, PatientFile
 from app.routers import chat
+from app.services import chat_execution
 from chains import llm
 
 
@@ -66,6 +67,7 @@ def _configure_llm_env(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "ollama")
     monkeypatch.setenv("LLM_OLLAMA_BASE_URL", "http://localhost:11434")
     monkeypatch.setenv("LLM_OLLAMA_MODELS", "model-a,model-b")
+    monkeypatch.setenv("LLM_OLLAMA_MODEL", "model-a")
     llm.clear_llm_config_cache()
 
 
@@ -80,26 +82,6 @@ def _build_client(fake_db):
     return TestClient(app)
 
 
-def test_chat_rejects_invalid_model(monkeypatch):
-    _configure_llm_env(monkeypatch)
-    fake_db = _FakeDB()
-    client = _build_client(fake_db)
-
-    response = client.post(
-        "/api/v1/chat",
-        json={
-            "message": "Hallo",
-            "model": "invalid-model",
-            "condition": "default",
-            "talkativeness": "ausgewogen",
-            "patient_file_id": 3,
-            "session_id": "session-1",
-        },
-    )
-
-    assert response.status_code == 400
-
-
 def test_chat_rejects_invalid_condition(monkeypatch):
     _configure_llm_env(monkeypatch)
     fake_db = _FakeDB()
@@ -109,7 +91,6 @@ def test_chat_rejects_invalid_condition(monkeypatch):
         "/api/v1/chat",
         json={
             "message": "Hallo",
-            "model": "model-a",
             "condition": "invalid-condition",
             "talkativeness": "ausgewogen",
             "patient_file_id": 3,
@@ -129,7 +110,6 @@ def test_chat_rejects_empty_message(monkeypatch):
         "/api/v1/chat",
         json={
             "message": "   ",
-            "model": "model-a",
             "condition": "default",
             "talkativeness": "ausgewogen",
             "patient_file_id": 3,
@@ -146,9 +126,9 @@ def test_chat_valid_request_streams_response(monkeypatch):
     async def fake_stream_response(*args, **kwargs):
         yield "Antwort"
 
-    monkeypatch.setattr(chat, "stream_response", fake_stream_response)
-    monkeypatch.setattr(chat, "has_anamdocs", lambda *_: False)
-    monkeypatch.setattr(chat, "format_patient_details", lambda _: "mocked-patient-details")
+    monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
+    monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
+    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
 
     fake_db = _FakeDB()
     client = _build_client(fake_db)
@@ -157,7 +137,6 @@ def test_chat_valid_request_streams_response(monkeypatch):
         "/api/v1/chat",
         json={
             "message": "Hallo",
-            "model": "model-a",
             "condition": "default",
             "talkativeness": "ausgewogen",
             "patient_file_id": 3,
@@ -174,32 +153,38 @@ def test_stream_response_strips_think_tags_across_chunks(monkeypatch):
         async def astream(self, *_args, **_kwargs):
             yield (
                 "messages",
-                (SimpleNamespace(content="<thi"), {"langgraph_node": chat.TARGET_NODE}),
+                (
+                    SimpleNamespace(content="<thi"),
+                    {"langgraph_node": chat_execution.TARGET_NODE},
+                ),
             )
             yield (
                 "messages",
-                (SimpleNamespace(content="nk>hidden"), {"langgraph_node": chat.TARGET_NODE}),
+                (
+                    SimpleNamespace(content="nk>hidden"),
+                    {"langgraph_node": chat_execution.TARGET_NODE},
+                ),
             )
             yield (
                 "messages",
                 (
                     SimpleNamespace(content=" text</thin"),
-                    {"langgraph_node": chat.TARGET_NODE},
+                    {"langgraph_node": chat_execution.TARGET_NODE},
                 ),
             )
             yield (
                 "messages",
                 (
                     SimpleNamespace(content="k>Hello there"),
-                    {"langgraph_node": chat.TARGET_NODE},
+                    {"langgraph_node": chat_execution.TARGET_NODE},
                 ),
             )
 
-    monkeypatch.setattr(chat, "build_symptex_model", lambda _docs_cache: _FakeModel())
+    monkeypatch.setattr(chat_execution, "build_symptex_model", lambda _docs_cache: _FakeModel())
 
     async def _collect() -> str:
         parts = []
-        async for chunk in chat.stream_response(
+        async for chunk in chat_execution.stream_response(
             model="model-a",
             condition="default",
             talkativeness="ausgewogen",
@@ -220,18 +205,21 @@ def test_stream_response_keeps_normal_text_with_partial_tag_prefix(monkeypatch):
         async def astream(self, *_args, **_kwargs):
             yield (
                 "messages",
-                (SimpleNamespace(content="normal text "), {"langgraph_node": chat.TARGET_NODE}),
+                (
+                    SimpleNamespace(content="normal text "),
+                    {"langgraph_node": chat_execution.TARGET_NODE},
+                ),
             )
             yield (
                 "messages",
-                (SimpleNamespace(content="<t"), {"langgraph_node": chat.TARGET_NODE}),
+                (SimpleNamespace(content="<t"), {"langgraph_node": chat_execution.TARGET_NODE}),
             )
 
-    monkeypatch.setattr(chat, "build_symptex_model", lambda _docs_cache: _FakeModel())
+    monkeypatch.setattr(chat_execution, "build_symptex_model", lambda _docs_cache: _FakeModel())
 
     async def _collect() -> str:
         parts = []
-        async for chunk in chat.stream_response(
+        async for chunk in chat_execution.stream_response(
             model="model-a",
             condition="default",
             talkativeness="ausgewogen",

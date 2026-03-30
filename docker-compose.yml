@@ -2,6 +2,10 @@ services:
   frontend:
     build:
       context: ./frontend
+    environment:
+      - DEV_FRONTEND_MODELS=${DEV_FRONTEND_MODELS:-}
+      - DEV_FRONTEND_DEFAULT_MODEL=${DEV_FRONTEND_DEFAULT_MODEL:-}
+      - DEV_FRONTEND_KEY=${DEV_FRONTEND_KEY:-}
     ports:
       - "8501:8501"
     restart: always
