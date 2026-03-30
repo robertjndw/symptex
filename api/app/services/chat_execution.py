@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from typing import AsyncGenerator
 
 from fastapi.responses import PlainTextResponse, StreamingResponse
@@ -7,20 +8,32 @@ from langchain_core.messages import AIMessage, HumanMessage
 from sqlalchemy.orm import Session
 
 from app.db.db_utils import has_anamdocs
-from app.db.models import ChatMessage, ChatSession, PatientFile
+from app.db.models import Case, ChatMessage, ChatSession, PatientFile
 from app.services.anamdocs_client import AnamDocsClient
 from app.utils.stream_filters import StreamDelimitedBlockFilter
 from chains.chat_chain import build_symptex_model
 from chains.document_bundle_cache import DocumentBundleCache
 from chains.eval_chain import eval_history
 from chains.formatting import format_patient_details
-from chains.llm import InvalidModelError, LLMConfigurationError, validate_requested_model
+from chains.llm import (
+    InvalidModelError,
+    LLMConfigurationError,
+    get_llm_config,
+    get_runtime_model,
+    validate_requested_model,
+)
 
 logger = logging.getLogger(__name__)
 
 TARGET_NODE = "patient_model_final"
-ALLOWED_CONDITIONS = {"default", "alzheimer", "schwerhoerig", "verdraengung"}
-ALLOWED_TALKATIVENESS = {"kurz angebunden", "ausgewogen", "ausschweifend"}
+ALLOWED_CONDITIONS = ("default", "alzheimer", "schwerhoerig", "verdraengung")
+ALLOWED_CONDITIONS_SET = set(ALLOWED_CONDITIONS)
+ALLOWED_TALKATIVENESS = ("kurz angebunden", "ausgewogen", "ausschweifend")
+ALLOWED_TALKATIVENESS_SET = set(ALLOWED_TALKATIVENESS)
+DEFAULT_CONDITION = "default"
+DEFAULT_TALKATIVENESS = "ausgewogen"
+DEFAULT_CONDITION_ENV = "SYMPTEX_DEFAULT_CONDITION"
+DEFAULT_TALKATIVENESS_ENV = "SYMPTEX_DEFAULT_TALKATIVENESS"
 MODEL_INTERNAL_BLOCK_START = "<think>"
 MODEL_INTERNAL_BLOCK_END = "</think>"
 
@@ -36,29 +49,165 @@ def validate_model_selection(requested_model: str) -> tuple[str | None, PlainTex
         return None, PlainTextResponse(str(exc), status_code=500)
 
 
+def get_allowed_chat_parameters() -> tuple[dict[str, list[str]] | None, PlainTextResponse | None]:
+    try:
+        models = list(get_llm_config().models)
+    except LLMConfigurationError as exc:
+        logger.error("LLM configuration error while resolving allowed chat parameters: %s", exc)
+        return None, PlainTextResponse(str(exc), status_code=500)
+
+    return {
+        "models": models,
+        "conditions": list(ALLOWED_CONDITIONS),
+        "talkativeness": list(ALLOWED_TALKATIVENESS),
+    }, None
+
+
+def _read_default_condition() -> str:
+    configured = os.getenv(DEFAULT_CONDITION_ENV, "").strip()
+    if not configured:
+        return DEFAULT_CONDITION
+    if configured in ALLOWED_CONDITIONS_SET:
+        return configured
+    logger.warning(
+        "Invalid %s=%r. Falling back to %r.",
+        DEFAULT_CONDITION_ENV,
+        configured,
+        DEFAULT_CONDITION,
+    )
+    return DEFAULT_CONDITION
+
+
+def _read_default_talkativeness() -> str:
+    configured = os.getenv(DEFAULT_TALKATIVENESS_ENV, "").strip()
+    if not configured:
+        return DEFAULT_TALKATIVENESS
+    if configured in ALLOWED_TALKATIVENESS_SET:
+        return configured
+    logger.warning(
+        "Invalid %s=%r. Falling back to %r.",
+        DEFAULT_TALKATIVENESS_ENV,
+        configured,
+        DEFAULT_TALKATIVENESS,
+    )
+    return DEFAULT_TALKATIVENESS
+
+
+def _validate_condition_and_talkativeness(
+    condition: str,
+    talkativeness: str,
+) -> PlainTextResponse | None:
+    if condition not in ALLOWED_CONDITIONS_SET:
+        logger.error("Invalid condition: %s", condition)
+        return PlainTextResponse(f"Invalid condition: {condition}", status_code=400)
+
+    if talkativeness not in ALLOWED_TALKATIVENESS_SET:
+        logger.error("Invalid talkativeness: %s", talkativeness)
+        return PlainTextResponse(f"Invalid talkativeness: {talkativeness}", status_code=400)
+
+    return None
+
+
+def _resolve_runtime_chat_parameters(medical_case: Case) -> tuple[str, str, str]:
+    effective_model = get_runtime_model()
+    effective_condition = _read_default_condition()
+    effective_talkativeness = _read_default_talkativeness()
+
+    config = medical_case.symptex_config
+    if not config:
+        logger.info("No SymptexConfig for case_id=%s. Using defaults.", medical_case.id)
+        return effective_model, effective_condition, effective_talkativeness
+
+    candidate_model = (config.llm_model or "").strip()
+    if candidate_model:
+        try:
+            effective_model = validate_requested_model(candidate_model)
+        except (InvalidModelError, LLMConfigurationError) as exc:
+            logger.warning(
+                "Invalid SymptexConfig.llm_model=%r for case_id=%s. Using fallback runtime model %r. Reason: %s",
+                candidate_model,
+                medical_case.id,
+                effective_model,
+                exc,
+            )
+    else:
+        logger.warning(
+            "Empty SymptexConfig.llm_model for case_id=%s. Using fallback runtime model %r.",
+            medical_case.id,
+            effective_model,
+        )
+
+    candidate_condition = (config.condition or "").strip()
+    if candidate_condition in ALLOWED_CONDITIONS_SET:
+        effective_condition = candidate_condition
+    else:
+        logger.warning(
+            "Invalid SymptexConfig.condition=%r for case_id=%s. Using fallback condition %r.",
+            candidate_condition,
+            medical_case.id,
+            effective_condition,
+        )
+
+    candidate_talkativeness = (config.talkativeness or "").strip()
+    if candidate_talkativeness in ALLOWED_TALKATIVENESS_SET:
+        effective_talkativeness = candidate_talkativeness
+    else:
+        logger.warning(
+            "Invalid SymptexConfig.talkativeness=%r for case_id=%s. Using fallback talkativeness %r.",
+            candidate_talkativeness,
+            medical_case.id,
+            effective_talkativeness,
+        )
+
+    return effective_model, effective_condition, effective_talkativeness
+
+#todo refactor
 async def execute_chat(
     db: Session,
     *,
-    model: str,
+    model: str | None = None,
     message: str,
-    condition: str,
-    talkativeness: str,
-    patient_file_id: int,
+    condition: str | None = None,
+    talkativeness: str | None = None,
+    case_id: int,
     session_id: str,
+    use_case_config: bool = False,
 ) -> StreamingResponse | PlainTextResponse:
     if not message or not message.strip():
         logger.error("Empty message received")
         return PlainTextResponse("Message cannot be empty", status_code=400)
 
-    if condition not in ALLOWED_CONDITIONS:
-        logger.error("Invalid condition: %s", condition)
-        return PlainTextResponse(f"Invalid condition: {condition}", status_code=400)
+    medical_case = db.query(Case).filter(Case.id == case_id).first()
+    if not medical_case:
+        return PlainTextResponse("Case not found", status_code=404)
 
-    if talkativeness not in ALLOWED_TALKATIVENESS:
-        logger.error("Invalid talkativeness: %s", talkativeness)
-        return PlainTextResponse(f"Invalid talkativeness: {talkativeness}", status_code=400)
+    if use_case_config:
+        try:
+            effective_model, effective_condition, effective_talkativeness = _resolve_runtime_chat_parameters(
+                medical_case
+            )
+        except LLMConfigurationError as exc:
+            logger.error("LLM configuration error while resolving runtime chat parameters: %s", exc)
+            return PlainTextResponse(str(exc), status_code=500)
+    else:
+        effective_model = (model or "").strip()
+        effective_condition = (condition or "").strip()
+        effective_talkativeness = (talkativeness or "").strip()
 
-    patient_file = db.query(PatientFile).filter(PatientFile.id == patient_file_id).first()
+        if not effective_model:
+            logger.error("Model cannot be empty")
+            return PlainTextResponse("Model cannot be empty.", status_code=400)
+
+    validation_error = _validate_condition_and_talkativeness(
+        condition=effective_condition,
+        talkativeness=effective_talkativeness,
+    )
+    if validation_error is not None:
+        return validation_error
+
+    patient_file = medical_case.patient_file
+    if not patient_file:
+        patient_file = db.query(PatientFile).filter(PatientFile.id == medical_case.patient_file_id).first()
     if not patient_file:
         return PlainTextResponse("Patient not found", status_code=404)
     patient_details = format_patient_details(patient_file)
@@ -66,7 +215,7 @@ async def execute_chat(
     # TODO: implement proper session management
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
     if not session:
-        session = ChatSession(id=session_id, patient_file_id=patient_file_id)
+        session = ChatSession(id=session_id, patient_file_id=patient_file.id)
         db.add(session)
         db.commit()
         db.refresh(session)
@@ -105,9 +254,9 @@ async def execute_chat(
                 docs_available = has_anamdocs(db, patient_file.id)
                 logger.info("Beginning text streaming")
                 async for chunk in stream_response(
-                    model=model,
-                    condition=condition,
-                    talkativeness=talkativeness,
+                    model=effective_model,
+                    condition=effective_condition,
+                    talkativeness=effective_talkativeness,
                     patient_details=patient_details,
                     previous_messages=messages,
                     docs_available=docs_available,

@@ -30,7 +30,10 @@ def test_runtime_chat_uses_configured_model(monkeypatch):
     _configure_ollama_env(monkeypatch)
 
     async def fake_execute_chat(_db, **kwargs):
-        assert kwargs["model"] == "model-b"
+        assert kwargs["use_case_config"] is True
+        assert "model" not in kwargs
+        assert "condition" not in kwargs
+        assert "talkativeness" not in kwargs
         return PlainTextResponse("ok", status_code=200)
 
     monkeypatch.setattr(chat, "execute_chat", fake_execute_chat)
@@ -40,9 +43,7 @@ def test_runtime_chat_uses_configured_model(monkeypatch):
         "/api/v1/chat",
         json={
             "message": "Hallo",
-            "condition": "default",
-            "talkativeness": "ausgewogen",
-            "patient_file_id": 1,
+            "case_id": 1,
             "session_id": "session-1",
         },
     )
@@ -66,6 +67,20 @@ def test_runtime_eval_uses_configured_model(monkeypatch):
 
     assert response.status_code == 200
     assert response.text == "ok"
+
+
+def test_chat_options_returns_allowed_values(monkeypatch):
+    _configure_ollama_env(monkeypatch)
+    client = _build_client()
+
+    response = client.get("/api/v1/chat/options")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "models": ["model-a", "model-b"],
+        "conditions": ["default", "alzheimer", "schwerhoerig", "verdraengung"],
+        "talkativeness": ["kurz angebunden", "ausgewogen", "ausschweifend"],
+    }
 
 
 def test_dev_eval_rejects_missing_dev_key(monkeypatch):
@@ -114,6 +129,9 @@ def test_dev_chat_uses_selected_model(monkeypatch):
 
     async def fake_execute_chat(_db, **kwargs):
         assert kwargs["model"] == "model-a"
+        assert kwargs["condition"] == "default"
+        assert kwargs["talkativeness"] == "ausgewogen"
+        assert kwargs["use_case_config"] is False
         return PlainTextResponse("ok", status_code=200)
 
     monkeypatch.setattr(dev_chat, "execute_chat", fake_execute_chat)
@@ -127,7 +145,7 @@ def test_dev_chat_uses_selected_model(monkeypatch):
             "model": "model-a",
             "condition": "default",
             "talkativeness": "ausgewogen",
-            "patient_file_id": 1,
+            "case_id": 1,
             "session_id": "session-1",
         },
     )

@@ -362,7 +362,7 @@ def main() -> None:
             "model": st.session_state.model,
             "condition": st.session_state.condition,
             "talkativeness": st.session_state.talkativeness,
-            "patient_file_id": 3, # Anna Zank
+            "case_id": 3, # Anna Zank
             "session_id": st.session_state.session_id
         }
 

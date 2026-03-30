@@ -29,6 +29,13 @@ LLM_PROVIDER=chatai # or ollama
 # Defaults to disabled when omitted.
 SYMPTEX_DEV_MODE=false
 
+# Optional runtime fallback defaults when case SymptexConfig is missing/disabled/invalid.
+# Allowed values:
+# - SYMPTEX_DEFAULT_CONDITION: default, alzheimer, schwerhoerig, verdraengung
+# - SYMPTEX_DEFAULT_TALKATIVENESS: kurz angebunden, ausgewogen, ausschweifend
+SYMPTEX_DEFAULT_CONDITION=default
+SYMPTEX_DEFAULT_TALKATIVENESS=ausgewogen
+
 # Required for provider "chatai"
 LLM_CHATAI_BASE_URL=https://chat-ai.academiccloud.de/v1
 LLM_CHATAI_API_KEY={api_key}
@@ -84,6 +91,7 @@ If `DATABASE_URL` is omitted or set to an empty value, the API falls back to `po
 
 - Streamlit frontend: <http://localhost:8501>
 - API: <http://localhost:8000>
+- Runtime configuration options endpoint: `GET /api/v1/chat/options` (returns allowed models, conditions, talkativeness values)
 - Development model override endpoints (only when `SYMPTEX_DEV_MODE=true`): `POST /api/v1/dev/chat` and `POST /api/v1/dev/eval` (require `X-Dev-Frontend-Key`)
 
 ## Features

@@ -20,7 +20,7 @@ class DevChatRequest(BaseModel):
     model: str
     condition: str
     talkativeness: str
-    patient_file_id: int
+    case_id: int
     session_id: str
 
 
@@ -61,8 +61,9 @@ async def dev_chat_with_llm(
         message=request.message,
         condition=request.condition,
         talkativeness=request.talkativeness,
-        patient_file_id=request.patient_file_id,
+        case_id=request.case_id,
         session_id=request.session_id,
+        use_case_config=False,
     )
 
 

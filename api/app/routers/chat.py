@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.db import get_db
 from app.db.models import ChatMessage, ChatSession
-from app.services.chat_execution import execute_chat, execute_eval
+from app.services.chat_execution import execute_chat, execute_eval, get_allowed_chat_parameters
 from chains.llm import LLMConfigurationError, get_runtime_model
 
 logger = logging.getLogger(__name__)
@@ -16,9 +16,7 @@ router = APIRouter()
 
 class ChatRequest(BaseModel):
     message: str
-    condition: str
-    talkativeness: str
-    patient_file_id: int
+    case_id: int
     session_id: str
 
 
@@ -29,21 +27,21 @@ class RateRequest(BaseModel):
 @router.post("/chat")
 async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
     logger.debug("Received runtime chat request: %s", request)
-    try:
-        model = get_runtime_model()
-    except LLMConfigurationError as exc:
-        logger.error("LLM configuration error while resolving runtime model: %s", exc)
-        return PlainTextResponse(str(exc), status_code=500)
-
     return await execute_chat(
         db,
-        model=model,
         message=request.message,
-        condition=request.condition,
-        talkativeness=request.talkativeness,
-        patient_file_id=request.patient_file_id,
+        case_id=request.case_id,
         session_id=request.session_id,
+        use_case_config=True,
     )
+
+
+@router.get("/chat/options")
+async def get_chat_options():
+    options, error = get_allowed_chat_parameters()
+    if error is not None:
+        return error
+    return options
 
 
 @router.post("/eval")
