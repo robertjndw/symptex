@@ -102,7 +102,7 @@ class Case(Base):
 
 
 class SymptexConfig(Base):
-    __tablename__ = "symptex_configs"
+    __tablename__ = "symptex_config"
 
     id = Column(Integer, primary_key=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc), nullable=False)

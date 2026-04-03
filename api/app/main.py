@@ -4,6 +4,7 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import models
 from app.db.db import engine
@@ -32,6 +33,27 @@ def configure_logging() -> None:
         logger.warning("Invalid LOG_LEVEL=%r. Falling back to INFO.", requested_level)
     logger.info("Configured logging level: %s", logging.getLevelName(log_level))
 
+
+def get_cors_allow_origins() -> list[str]:
+    configured = os.getenv("SYMPTEX_CORS_ALLOW_ORIGINS", os.getenv("CORS_ALLOW_ORIGINS", "*")).strip()
+    if configured == "":
+        return ["*"]
+    origins = [origin.strip() for origin in configured.split(",") if origin.strip()]
+    return origins or ["*"]
+
+
+def configure_cors(app: FastAPI) -> None:
+    origins = get_cors_allow_origins()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    logging.getLogger(__name__).info("Configured CORS allow_origins=%s allow_credentials=%s", origins, False)
+
+
 load_dotenv()
 configure_logging()
 
@@ -42,6 +64,7 @@ app = FastAPI(
     version="1.0",
     description="API server for Symptex, a LangChain-based chat application for patient simulation",
 )
+configure_cors(app)
 
 @app.get("/")
 def read_root():

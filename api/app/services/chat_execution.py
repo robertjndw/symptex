@@ -205,6 +205,16 @@ async def execute_chat(
     if validation_error is not None:
         return validation_error
 
+    logger.info(
+        "Resolved chat LLM parameters: model=%s condition=%s talkativeness=%s use_case_config=%s case_id=%s session_id=%s",
+        effective_model,
+        effective_condition,
+        effective_talkativeness,
+        use_case_config,
+        case_id,
+        session_id,
+    )
+
     patient_file = medical_case.patient_file
     if not patient_file:
         patient_file = db.query(PatientFile).filter(PatientFile.id == medical_case.patient_file_id).first()
