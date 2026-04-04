@@ -103,7 +103,7 @@ def _runtime_chat_payload(*, case_id: int = 3, message: str = "Hallo"):
     }
 
 
-def test_chat_uses_case_symptex_config_when_enabled(monkeypatch):
+def test_chat_uses_case_symptex_config_when_present(monkeypatch):
     _configure_llm_env(monkeypatch)
     _configure_runtime_defaults(monkeypatch, condition="default", talkativeness="ausgewogen")
     captured = {}
@@ -118,7 +118,6 @@ def test_chat_uses_case_symptex_config_when_enabled(monkeypatch):
 
     fake_db = _FakeDB()
     fake_db.case.symptex_config = SimpleNamespace(
-        enabled=True,
         llm_model="model-b",
         condition="alzheimer",
         talkativeness="ausschweifend",
@@ -157,36 +156,6 @@ def test_chat_uses_defaults_when_symptex_config_missing(monkeypatch):
     assert captured["talkativeness"] == "kurz angebunden"
 
 
-def test_chat_uses_defaults_when_symptex_config_disabled(monkeypatch):
-    _configure_llm_env(monkeypatch)
-    _configure_runtime_defaults(monkeypatch, condition="default", talkativeness="ausgewogen")
-    captured = {}
-
-    async def fake_stream_response(*args, **kwargs):
-        captured.update(kwargs)
-        yield "Antwort"
-
-    monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
-    monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
-    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
-
-    fake_db = _FakeDB()
-    fake_db.case.symptex_config = SimpleNamespace(
-        enabled=False,
-        llm_model="model-b",
-        condition="alzheimer",
-        talkativeness="ausschweifend",
-    )
-    client = _build_client(fake_db)
-
-    response = client.post("/api/v1/chat", json=_runtime_chat_payload())
-
-    assert response.status_code == 200
-    assert captured["model"] == "model-a"
-    assert captured["condition"] == "default"
-    assert captured["talkativeness"] == "ausgewogen"
-
-
 def test_chat_falls_back_per_field_for_invalid_symptex_config_values(monkeypatch):
     _configure_llm_env(monkeypatch)
     _configure_runtime_defaults(monkeypatch, condition="verdraengung", talkativeness="kurz angebunden")
@@ -202,7 +171,6 @@ def test_chat_falls_back_per_field_for_invalid_symptex_config_values(monkeypatch
 
     fake_db = _FakeDB()
     fake_db.case.symptex_config = SimpleNamespace(
-        enabled=True,
         llm_model="not-available",
         condition="not-supported",
         talkativeness="too-chatty",
@@ -215,6 +183,61 @@ def test_chat_falls_back_per_field_for_invalid_symptex_config_values(monkeypatch
     assert captured["model"] == "model-a"
     assert captured["condition"] == "verdraengung"
     assert captured["talkativeness"] == "kurz angebunden"
+
+
+def test_chat_reuses_existing_session_when_case_and_patient_match(monkeypatch):
+    _configure_llm_env(monkeypatch)
+    _configure_runtime_defaults(monkeypatch, condition="default", talkativeness="ausgewogen")
+    captured = {}
+
+    async def fake_stream_response(*args, **kwargs):
+        captured.update(kwargs)
+        yield "Antwort"
+
+    monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
+    monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
+    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
+
+    fake_db = _FakeDB()
+    fake_db.session = SimpleNamespace(
+        id="session-1",
+        patient_file_id=3,
+        case_id=3,
+    )
+    client = _build_client(fake_db)
+
+    response = client.post("/api/v1/chat", json=_runtime_chat_payload())
+
+    assert response.status_code == 200
+    assert captured["model"] == "model-a"
+
+
+def test_chat_rejects_existing_session_from_other_owner(monkeypatch):
+    _configure_llm_env(monkeypatch)
+    _configure_runtime_defaults(monkeypatch, condition="default", talkativeness="ausgewogen")
+    captured = {}
+
+    async def fake_stream_response(*args, **kwargs):
+        captured.update(kwargs)
+        yield "Antwort"
+
+    monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
+    monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
+    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
+
+    fake_db = _FakeDB()
+    fake_db.session = SimpleNamespace(
+        id="session-1",
+        patient_file_id=999,
+        case_id=999,
+    )
+    client = _build_client(fake_db)
+
+    response = client.post("/api/v1/chat", json=_runtime_chat_payload())
+
+    assert response.status_code == 409
+    assert "Session does not belong to this case." in response.text
+    assert captured == {}
 
 
 def test_chat_rejects_empty_message(monkeypatch):

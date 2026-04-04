@@ -224,8 +224,22 @@ async def execute_chat(
 
     # TODO: implement proper session management
     session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
-    if not session:
-        session = ChatSession(id=session_id, patient_file_id=patient_file.id)
+    if session:
+        session_patient_file_id = getattr(session, "patient_file_id", None)
+        session_case_id = getattr(session, "case_id", None)
+        if session_patient_file_id != patient_file.id or session_case_id != medical_case.id:
+            logger.warning(
+                "Session ownership mismatch for session_id=%s requested_case_id=%s requested_patient_file_id=%s "
+                "actual_case_id=%s actual_patient_file_id=%s",
+                session_id,
+                medical_case.id,
+                patient_file.id,
+                session_case_id,
+                session_patient_file_id,
+            )
+            return PlainTextResponse("Session does not belong to this case.", status_code=409)
+    else:
+        session = ChatSession(id=session_id, patient_file_id=patient_file.id, case_id=medical_case.id)
         db.add(session)
         db.commit()
         db.refresh(session)

@@ -8,6 +8,7 @@ class ChatSession(Base):
 
     id = Column(String, primary_key=True, index=True)
     patient_file_id = Column(Integer, ForeignKey('patient_files.id'))
+    case_id = Column(Integer, ForeignKey("cases.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
     messages = relationship("ChatMessage", back_populates="session")
 
@@ -114,7 +115,6 @@ class SymptexConfig(Base):
     )
     deleted_at = Column(DateTime, nullable=True, index=True)
 
-    enabled = Column(Boolean, default=True, nullable=False)
     llm_model = Column(String, nullable=False)
     condition = Column(String, nullable=False)
     talkativeness = Column(String, nullable=False)
