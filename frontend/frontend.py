@@ -1,5 +1,6 @@
 import base64
 import binascii
+import html
 import json
 import logging
 import os
@@ -96,6 +97,37 @@ def setup_header_layout() -> None:
             .header-section {
                 padding-bottom: 2rem;
             }
+            .eval-card {
+                border: 1px solid #d5d9dd;
+                border-radius: 10px;
+                padding: 0.9rem 1rem;
+                margin: 0.6rem 0;
+                background: linear-gradient(180deg, #ffffff 0%, #f7f9fb 100%);
+            }
+            .eval-card-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 0.75rem;
+                margin-bottom: 0.45rem;
+            }
+            .eval-card-category {
+                font-weight: 700;
+                color: #102a43;
+            }
+            .eval-card-score {
+                font-weight: 700;
+                color: #0b7285;
+                background: #e6fcf5;
+                border: 1px solid #96f2d7;
+                border-radius: 999px;
+                padding: 0.15rem 0.6rem;
+                white-space: nowrap;
+            }
+            .eval-card-message {
+                color: #1f2933;
+                line-height: 1.4;
+            }
         </style>
     """, unsafe_allow_html=True)
 
@@ -170,6 +202,55 @@ def _dev_endpoint_headers() -> dict[str, str]:
     return headers
 
 
+def _try_parse_eval_payload(output_text: str) -> dict | None:
+    try:
+        payload = json.loads(output_text)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(payload, dict) or not payload:
+        return None
+
+    for category, item in payload.items():
+        if not isinstance(category, str) or not isinstance(item, dict):
+            return None
+        if "score" not in item or "message" not in item:
+            return None
+    return payload
+
+
+def _render_eval_cards(payload: dict) -> None:
+    cards: list[str] = []
+    for category, item in payload.items():
+        score = item.get("score", "?")
+        if isinstance(score, str) and score.strip().isdigit():
+            score = int(score.strip())
+        message = item.get("message", "")
+        safe_message = html.escape(str(message)).replace("\n", "<br>")
+
+        cards.append(
+            f"""
+            <div class="eval-card">
+                <div class="eval-card-header">
+                    <div class="eval-card-category">{html.escape(str(category))}</div>
+                    <div class="eval-card-score">Score: {html.escape(str(score))}/5</div>
+                </div>
+                <div class="eval-card-message">{safe_message}</div>
+            </div>
+            """
+        )
+
+    st.markdown("".join(cards), unsafe_allow_html=True)
+
+
+def render_chat_output(output_text: str) -> None:
+    payload = _try_parse_eval_payload(output_text)
+    if payload is None:
+        st.markdown(output_text)
+        return
+    _render_eval_cards(payload)
+
+
 def handle_chat_eval() -> None:
     """Handle chat rating functionality."""
     if not st.session_state.messages:
@@ -189,24 +270,24 @@ def handle_chat_eval() -> None:
             {"role": msg["role"], "output": msg["output"]} for msg in st.session_state.messages
         ]
 
-        # Create placeholder for evaluation response
-        response_placeholder = st.chat_message("patient").markdown("")
+        response_container = st.chat_message("patient")
 
         with st.spinner("Anamnese Feedback wird erstellt..."):
-            with requests.post(
+            response = requests.post(
                 f"{API_URL}/dev/eval",
                 json={"model": st.session_state.model, "messages": messages},
                 headers=_dev_endpoint_headers(),
-                stream=True,
-            ) as response:
-                if response.status_code == 200:
-                    evaluation_text, _ = process_llm_response(response, response_placeholder)
-                    st.session_state.messages.append({
-                        "role": "patient",
-                        "output": evaluation_text,
-                    })
-                else:
-                    st.error(f"Fehler bei der Bewertung (Status: {response.status_code})")
+            )
+            if response.status_code == 200:
+                evaluation_text = response.text
+                with response_container:
+                    render_chat_output(evaluation_text)
+                st.session_state.messages.append({
+                    "role": "patient",
+                    "output": evaluation_text,
+                })
+            else:
+                st.error(f"Fehler bei der Bewertung (Status: {response.status_code})")
 
     except Exception as e:
         logger.error(f"Error evaluating chat: {str(e)}")
@@ -343,7 +424,7 @@ def main() -> None:
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if "output" in message:
-                st.markdown(message["output"])
+                render_chat_output(message["output"])
 
     # Handle user input
     chat_disabled = (not available_models) or (not st.session_state.get("dev_frontend_key"))

@@ -133,23 +133,17 @@ async def execute_chat(
         docs_cache=docs_cache,
     )
 
-async def execute_eval(*, model: str, messages: list) -> StreamingResponse | PlainTextResponse:
-    async def generate_eval():
-        try:
-            lc_messages = []
-            for msg in messages:
-                if msg["role"] == "user":
-                    lc_messages.append(HumanMessage(content=msg["output"]))
-                elif msg["role"] in {"patient", "assistant"}:
-                    lc_messages.append(AIMessage(content=msg["output"]))
-            async for chunk in eval_history(lc_messages, model=model):
-                yield chunk
-        except Exception as exc:
-            logger.error("Error generating evaluation: %s", str(exc))
-            yield f"Entschuldigung, es ist ein Fehler aufgetreten: {str(exc)}"
-
+async def execute_eval(*, model: str, messages: list) -> PlainTextResponse:
     try:
-        return StreamingResponse(generate_eval(), media_type="text/plain")
+        lc_messages = []
+        for msg in messages:
+            if msg["role"] == "user":
+                lc_messages.append(HumanMessage(content=msg["output"]))
+            elif msg["role"] in {"patient", "assistant"}:
+                lc_messages.append(AIMessage(content=msg["output"]))
+
+        evaluation_text = await eval_history(lc_messages, model=model)
+        return PlainTextResponse(evaluation_text, status_code=200)
     except Exception as exc:
         logger.error("Error rating chat: %s", str(exc))
         return PlainTextResponse("Error rating chat", status_code=500)
