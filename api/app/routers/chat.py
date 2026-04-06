@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.db import get_db
+from app.db.symptex_db import get_symptex_db
 from app.db.models import ChatMessage, ChatSession
 from app.services.chat_execution import execute_chat, execute_eval, get_allowed_chat_parameters
 from chains.llm import LLMConfigurationError, get_runtime_model
@@ -25,10 +26,15 @@ class RateRequest(BaseModel):
 
 
 @router.post("/chat")
-async def chat_with_llm(request: ChatRequest, db: Session = Depends(get_db)):
+async def chat_with_llm(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    symptex_db: Session = Depends(get_symptex_db),
+):
     logger.debug("Received runtime chat request: %s", request)
     return await execute_chat(
         db,
+        symptex_db=symptex_db,
         message=request.message,
         case_id=request.case_id,
         session_id=request.session_id,

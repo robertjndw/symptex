@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import models
 from app.db.db import engine
+from app.db import symptex_models
+from app.db.symptex_db import symptex_engine
 from app.utils.env import read_bool_env
 
 def is_dev_mode_enabled() -> bool:
@@ -57,7 +59,7 @@ def configure_cors(app: FastAPI) -> None:
 load_dotenv()
 configure_logging()
 
-from app.routers import chat  # noqa: E402
+from app.routers import chat, config  # noqa: E402
 
 app = FastAPI(
     title="Symptex LangChain Server",
@@ -72,6 +74,7 @@ def read_root():
 
 # Include chat router
 app.include_router(chat.router, prefix="/api/v1")
+app.include_router(config.router, prefix="/api/v1")
 if is_dev_mode_enabled():
     from app.routers import dev_chat  # noqa: E402
 
@@ -80,3 +83,4 @@ if is_dev_mode_enabled():
 
 # Init database schema
 models.Base.metadata.create_all(bind=engine)
+symptex_models.SymptexBase.metadata.create_all(bind=symptex_engine)

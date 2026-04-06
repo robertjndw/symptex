@@ -8,7 +8,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.db.db import get_db
+from app.db.symptex_db import get_symptex_db
 from app.db.models import Case, ChatMessage, ChatSession, PatientFile
+from app.db.symptex_models import SymptexConfig
 from app.routers import chat
 from app.services import chat_execution
 from chains import llm
@@ -43,8 +45,8 @@ class _FakeDB:
             id=3,
             patient_file_id=3,
             patient_file=self.patient,
-            symptex_config=None,
         )
+        self.symptex_config = None
 
     def query(self, model):
         if model is Case:
@@ -55,6 +57,8 @@ class _FakeDB:
             return _FakeQuery(first_value=self.session)
         if model is ChatMessage:
             return _FakeQuery(all_value=[])
+        if model is SymptexConfig:
+            return _FakeQuery(first_value=self.symptex_config)
         return _FakeQuery()
 
     def add(self, obj):
@@ -91,7 +95,11 @@ def _build_client(fake_db):
     def _override_db():
         yield fake_db
 
+    def _override_symptex_db():
+        yield fake_db
+
     app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_symptex_db] = _override_symptex_db
     return TestClient(app)
 
 
@@ -117,8 +125,8 @@ def test_chat_uses_case_symptex_config_when_present(monkeypatch):
     monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
 
     fake_db = _FakeDB()
-    fake_db.case.symptex_config = SimpleNamespace(
-        llm_model="model-b",
+    fake_db.symptex_config = SimpleNamespace(
+        model="model-b",
         condition="alzheimer",
         talkativeness="ausschweifend",
     )
@@ -170,8 +178,8 @@ def test_chat_falls_back_per_field_for_invalid_symptex_config_values(monkeypatch
     monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
 
     fake_db = _FakeDB()
-    fake_db.case.symptex_config = SimpleNamespace(
-        llm_model="not-available",
+    fake_db.symptex_config = SimpleNamespace(
+        model="not-available",
         condition="not-supported",
         talkativeness="too-chatty",
     )

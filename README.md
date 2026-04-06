@@ -21,6 +21,7 @@ HOST_ANAMNESIS_PATH={path to Befunde}
 
 # Optional for API database connection (defaults shown)
 DATABASE_URL=postgresql://ilvi:ilvi@postgres:5432/ilvi
+SYMPTEX_DATABASE_URL=postgresql://symptex:symptex@symptex-db:5432/symptex
 
 # Required LLM provider selection
 LLM_PROVIDER=chatai # or ollama
@@ -81,6 +82,7 @@ LANGCHAIN_TRACING_V2=true
 LANGCHAIN_API_KEY=insert_langsmith_key
 ```
 If `DATABASE_URL` is omitted or set to an empty value, the API falls back to `postgresql://ilvi:ilvi@postgres:5432/ilvi`.
+If `SYMPTEX_DATABASE_URL` is omitted or set to an empty value, the API falls back to `DATABASE_URL`.
 `ILUVI_DEBUG_LOGIN_ENABLED=true` is intended for local development only. It requires ILuVI to run with
 `ILVI_DEBUG=true` so `/auth/debug-login` is available. Do not enable this in production.
 
@@ -92,6 +94,7 @@ If `DATABASE_URL` is omitted or set to an empty value, the API falls back to `po
 - Streamlit frontend: <http://localhost:8501>
 - API: <http://localhost:8000>
 - Runtime configuration options endpoint: `GET /api/v1/chat/options` (returns allowed models, conditions, talkativeness values)
+- Symptex case config management endpoints: `POST /api/v1/config` and `DELETE /api/v1/config/{case_id}`
 - Development model override endpoints (only when `SYMPTEX_DEV_MODE=true`): `POST /api/v1/dev/chat` and `POST /api/v1/dev/eval` (require `X-Dev-Frontend-Key`)
 
 ## Features

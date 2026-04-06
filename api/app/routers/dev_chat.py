@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.db import get_db
+from app.db.symptex_db import get_symptex_db
 from app.services.chat_execution import execute_chat, execute_eval, validate_model_selection
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ def _validate_dev_frontend_key(provided_key: str | None) -> PlainTextResponse | 
 async def dev_chat_with_llm(
     request: DevChatRequest,
     db: Session = Depends(get_db),
+    symptex_db: Session = Depends(get_symptex_db),
     dev_frontend_key: str | None = Header(default=None, alias=DEV_FRONTEND_KEY_HEADER),
 ):
     auth_error = _validate_dev_frontend_key(dev_frontend_key)
@@ -57,6 +59,7 @@ async def dev_chat_with_llm(
 
     return await execute_chat(
         db,
+        symptex_db=symptex_db,
         model=model,
         message=request.message,
         condition=request.condition,

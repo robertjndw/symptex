@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.db_utils import has_anamdocs
 from app.db.models import Case, ChatMessage, ChatSession, PatientFile
+from app.db.symptex_models import SymptexConfig
 from app.services.anamdocs_client import AnamDocsClient
 from app.utils.stream_filters import StreamDelimitedBlockFilter
 from chains.chat_chain import build_symptex_model
@@ -65,6 +66,7 @@ def get_allowed_chat_parameters() -> tuple[dict[str, list[str]] | None, PlainTex
 async def execute_chat(
     db: Session,
     *,
+    symptex_db: Session | None = None,
     model: str | None = None,
     message: str,
     condition: str | None = None,
@@ -82,6 +84,7 @@ async def execute_chat(
         return case_error
 
     chat_parameters, parameters_error = _resolve_effective_chat_parameters(
+        symptex_db=symptex_db,
         medical_case=medical_case,
         use_case_config=use_case_config,
         model=model,
@@ -241,23 +244,31 @@ def _validate_condition_and_talkativeness(
     return None
 
 
-def _resolve_runtime_chat_parameters(medical_case: Case) -> tuple[str, str, str]:
+def _get_symptex_config(symptex_db: Session, case_id: int) -> SymptexConfig | None:
+    return (
+        symptex_db.query(SymptexConfig)
+        .filter(SymptexConfig.case_id == case_id)
+        .first()
+    )
+
+
+def _resolve_runtime_chat_parameters(*, symptex_db: Session, medical_case: Case) -> tuple[str, str, str]:
     effective_model = get_runtime_model()
     effective_condition = _read_default_condition()
     effective_talkativeness = _read_default_talkativeness()
 
-    config = medical_case.symptex_config
+    config = _get_symptex_config(symptex_db, medical_case.id)
     if not config:
         logger.info("No SymptexConfig for case_id=%s. Using defaults.", medical_case.id)
         return effective_model, effective_condition, effective_talkativeness
 
-    candidate_model = (config.llm_model or "").strip()
+    candidate_model = (config.model or "").strip()
     if candidate_model:
         try:
             effective_model = validate_requested_model(candidate_model)
         except (InvalidModelError, LLMConfigurationError) as exc:
             logger.warning(
-                "Invalid SymptexConfig.llm_model=%r for case_id=%s. Using fallback runtime model %r. Reason: %s",
+                "Invalid SymptexConfig.model=%r for case_id=%s. Using fallback runtime model %r. Reason: %s",
                 candidate_model,
                 medical_case.id,
                 effective_model,
@@ -265,7 +276,7 @@ def _resolve_runtime_chat_parameters(medical_case: Case) -> tuple[str, str, str]
             )
     else:
         logger.warning(
-            "Empty SymptexConfig.llm_model for case_id=%s. Using fallback runtime model %r.",
+            "Empty SymptexConfig.model for case_id=%s. Using fallback runtime model %r.",
             medical_case.id,
             effective_model,
         )
@@ -310,6 +321,7 @@ def _get_case_or_404(db: Session, case_id: int) -> tuple[Case | None, PlainTextR
 
 def _resolve_effective_chat_parameters(
     *,
+    symptex_db: Session | None,
     medical_case: Case,
     use_case_config: bool,
     model: str | None,
@@ -317,9 +329,13 @@ def _resolve_effective_chat_parameters(
     talkativeness: str | None,
 ) -> tuple[tuple[str, str, str] | None, PlainTextResponse | None]:
     if use_case_config:
+        if symptex_db is None:
+            logger.error("Missing symptex_db dependency while use_case_config=True")
+            return None, PlainTextResponse("Internal server error", status_code=500)
         try:
             effective_model, effective_condition, effective_talkativeness = _resolve_runtime_chat_parameters(
-                medical_case
+                symptex_db=symptex_db,
+                medical_case=medical_case,
             )
         except LLMConfigurationError as exc:
             logger.error("LLM configuration error while resolving runtime chat parameters: %s", exc)
