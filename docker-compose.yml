@@ -39,11 +39,11 @@ services:
     volumes:
       - "${HOST_ANAMNESIS_PATH}:/anamnesis_files"
     networks:
-      - ilvi-api_default
+      - iluvi-api_default
       - symptex-internal
 
 networks:
-  ilvi-api_default:
+  iluvi-api_default:
     external: true
   symptex-internal:
 
