@@ -3,25 +3,6 @@ from sqlalchemy.orm import relationship
 from app.db.db import Base
 import datetime
 
-class ChatSession(Base):
-    __tablename__ = "chat_sessions"
-
-    id = Column(String, primary_key=True, index=True)
-    patient_file_id = Column(Integer, ForeignKey('patient_files.id'))
-    case_id = Column(Integer, ForeignKey("cases.id"), nullable=True, index=True)
-    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
-    messages = relationship("ChatMessage", back_populates="session")
-
-class ChatMessage(Base):
-    __tablename__ = "chat_messages"
-
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String, ForeignKey('chat_sessions.id'))
-    role = Column(String)
-    content = Column(Text)
-    timestamp = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
-    session = relationship("ChatSession", back_populates="messages")
-
 class PatientFile(Base):
     __tablename__ = "patient_files"
 

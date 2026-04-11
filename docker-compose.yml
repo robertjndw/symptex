@@ -1,6 +1,6 @@
 services:
   symptex-db:
-    image: postgres:16
+    image: postgres:16-alpine
     environment:
       - POSTGRES_USER=symptex
       - POSTGRES_PASSWORD=symptex

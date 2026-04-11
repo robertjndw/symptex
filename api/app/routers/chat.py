@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.db import get_db
 from app.db.symptex_db import get_symptex_db
-from app.db.models import ChatMessage, ChatSession
+from app.db.symptex_models import ChatMessage, ChatSession
 from app.services.chat_execution import execute_chat, execute_eval, get_allowed_chat_parameters
 from chains.llm import LLMConfigurationError, get_runtime_model
 
@@ -62,13 +62,13 @@ async def eval_chat(request: RateRequest):
 
 
 @router.post("/reset/{session_id}")
-async def reset_memory(session_id: str, db: Session = Depends(get_db)):
+async def reset_memory(session_id: str, symptex_db: Session = Depends(get_symptex_db)):
     try:
-        db.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
-        db.query(ChatSession).filter(ChatSession.id == session_id).delete()
-        db.commit()
+        symptex_db.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
+        symptex_db.query(ChatSession).filter(ChatSession.id == session_id).delete()
+        symptex_db.commit()
         return PlainTextResponse(f"Chat data deleted for session {session_id}", status_code=200)
     except Exception as exc:
         logger.error("Error deleting session %s: %s", session_id, str(exc))
-        db.rollback()
+        symptex_db.rollback()
         return PlainTextResponse("Error deleting session", status_code=500)

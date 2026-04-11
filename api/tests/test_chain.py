@@ -9,8 +9,8 @@ from fastapi.testclient import TestClient
 
 from app.db.db import get_db
 from app.db.symptex_db import get_symptex_db
-from app.db.models import Case, ChatMessage, ChatSession, PatientFile
-from app.db.symptex_models import SymptexConfig
+from app.db.models import Case, PatientFile
+from app.db.symptex_models import ChatMessage, ChatSession, SymptexConfig
 from app.routers import chat
 from app.services import chat_execution
 from chains import llm
