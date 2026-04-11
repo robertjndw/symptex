@@ -12,15 +12,79 @@ history-taking skills.
 
 ## Getting Started
 
-1. In the `api/chains/` folder, create an `.env` file to define and store the following required (sensitive) keys:
-
+1. In the project root (`symptex/.env`), create an `.env` file.
+   This file is loaded into the `symptex` API container through `docker-compose.yml` (`env_file`).
+   Add the following variables:
 ```env
-CHATAI_API_URL=https://chat-ai.academiccloud.de/v1
-CHATAI_API_KEY=insert_api_key
-# For testing, optional:
+# Required for local volume mount used by docker-compose
+HOST_ANAMNESIS_PATH={path to Befunde}
+
+# Optional for API database connection (defaults shown)
+DATABASE_URL=postgresql://ilvi:ilvi@postgres:5432/ilvi
+SYMPTEX_DATABASE_URL=postgresql://symptex:symptex@symptex-db:5432/symptex
+
+# Required LLM provider selection
+LLM_PROVIDER=chatai # or ollama
+
+# Optional: enable development-only endpoints (/api/v1/dev/chat, /api/v1/dev/eval)
+# Defaults to disabled when omitted.
+SYMPTEX_DEV_MODE=false
+
+# Optional runtime fallback defaults when case SymptexConfig is missing/disabled/invalid.
+# Allowed values:
+# - SYMPTEX_DEFAULT_CONDITION: default, alzheimer, schwerhoerig, verdraengung
+# - SYMPTEX_DEFAULT_TALKATIVENESS: kurz angebunden, ausgewogen, ausschweifend
+SYMPTEX_DEFAULT_CONDITION=default
+SYMPTEX_DEFAULT_TALKATIVENESS=ausgewogen
+
+# Required for provider "chatai"
+LLM_CHATAI_BASE_URL=https://chat-ai.academiccloud.de/v1
+LLM_CHATAI_API_KEY={api_key}
+LLM_CHATAI_MODELS=qwen3-235b-a22b,llama-3.3-70b-instruct
+LLM_CHATAI_MODEL=qwen3-235b-a22b # required runtime model for /chat and /eval
+
+# Required for provider "ollama"
+LLM_OLLAMA_BASE_URL=http://host.docker.internal:11434
+LLM_OLLAMA_MODELS=gpt-oss:120b-cloud,llama3.2
+LLM_OLLAMA_MODEL=gpt-oss:120b-cloud # required runtime model for /chat and /eval
+
+# Required only when SYMPTEX_DEV_MODE=true
+DEV_FRONTEND_KEY={shared_secret_between_frontend_and_api}
+
+# Optional for development frontend model picker (frontend service)
+DEV_FRONTEND_MODELS=gpt-oss:120b-cloud,llama3.2
+DEV_FRONTEND_DEFAULT_MODEL=gpt-oss:120b-cloud
+
+# Optional LLM tuning (defaults shown)
+LLM_TEMPERATURE=0.7
+LLM_TOP_P=0.8
+LLM_MAX_RETRIES=2
+
+# Required for ILuVI AnamDocs REST integration
+ILUVI_API_BASE_URL={base_url_of_ilvi_backend}
+
+# Optional (defaults shown)
+FILE_SERVER_ROUTE=/static
+ANAMDOCS_HTTP_TIMEOUT_SEC=10
+ANAMDOCS_MAX_DOCS=10
+ANAMDOCS_MAX_FILE_MB=10
+ANAMDOCS_MAX_TOTAL_MB=40
+
+# Optional: local-only debug login fallback for ILuVI session auth
+ILUVI_DEBUG_LOGIN_ENABLED=false
+ILUVI_DEBUG_LOGIN_TUM_ID=ADMIN1234
+ILUVI_DEBUG_LOGIN_ROLE=admin
+ILUVI_DEBUG_LOGIN_FIRST_NAME=Symptex
+ILUVI_DEBUG_LOGIN_LAST_NAME=Debug
+
+# Optional for LangSmith tracing
 LANGCHAIN_TRACING_V2=true
 LANGCHAIN_API_KEY=insert_langsmith_key
 ```
+If `DATABASE_URL` is omitted or set to an empty value, the API falls back to `postgresql://ilvi:ilvi@postgres:5432/ilvi`.
+If `SYMPTEX_DATABASE_URL` is omitted or set to an empty value, the API falls back to `DATABASE_URL`.
+`ILUVI_DEBUG_LOGIN_ENABLED=true` is intended for local development only. It requires ILuVI to run with
+`ILVI_DEBUG=true` so `/auth/debug-login` is available. Do not enable this in production.
 
 2. Run `docker compose up --build` in the project's root directory.
 3. Interact with Symptex locally through [Streamlit frontend URL](http://localhost:8501).
@@ -29,6 +93,9 @@ LANGCHAIN_API_KEY=insert_langsmith_key
 
 - Streamlit frontend: <http://localhost:8501>
 - API: <http://localhost:8000>
+- Runtime configuration options endpoint: `GET /api/v1/chat/options` (returns allowed models, conditions, talkativeness values)
+- Symptex case config management endpoints: `POST /api/v1/config` and `DELETE /api/v1/config/{case_id}`
+- Development model override endpoints (only when `SYMPTEX_DEV_MODE=true`): `POST /api/v1/dev/chat` and `POST /api/v1/dev/eval` (require `X-Dev-Frontend-Key`)
 
 ## Features
 
@@ -74,3 +141,5 @@ symptex/
 ├── docker-compose.yml
 └── README.md
 ```
+
+TODOs: Connect the upload of Befunde with ILVI's backend

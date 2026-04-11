@@ -1,7 +1,23 @@
 services:
+  symptex-db:
+    image: postgres:16
+    environment:
+      - POSTGRES_USER=symptex
+      - POSTGRES_PASSWORD=symptex
+      - POSTGRES_DB=symptex
+    restart: always
+    volumes:
+      - symptex-db-data:/var/lib/postgresql/data
+    networks:
+      - symptex-internal
+
   frontend:
     build:
       context: ./frontend
+    environment:
+      - DEV_FRONTEND_MODELS=${DEV_FRONTEND_MODELS:-}
+      - DEV_FRONTEND_DEFAULT_MODEL=${DEV_FRONTEND_DEFAULT_MODEL:-}
+      - DEV_FRONTEND_KEY=${DEV_FRONTEND_KEY:-}
     ports:
       - "8501:8501"
     restart: always
@@ -9,14 +25,27 @@ services:
   symptex:
     build:
       context: ./api
+    depends_on:
+      - symptex-db
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     restart: always
     environment:
-      - DATABASE_URL=postgresql://ilvi:ilvi@postgres:5432/ilvi
+      - DATABASE_URL=${DATABASE_URL:-postgresql://ilvi:ilvi@postgres:5432/ilvi}
+      - SYMPTEX_DATABASE_URL=${SYMPTEX_DATABASE_URL:-postgresql://symptex:symptex@symptex-db:5432/symptex}
+      - ANAMNESIS_DIR=/anamnesis_files
+    volumes:
+      - "${HOST_ANAMNESIS_PATH}:/anamnesis_files"
     networks:
-      - ilvi-api_default
+      - iluvi-api_default
+      - symptex-internal
 
 networks:
-  ilvi-api_default:
+  iluvi-api_default:
     external: true
+  symptex-internal:
+
+volumes:
+  symptex-db-data:

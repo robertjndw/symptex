@@ -12,3 +12,5 @@ pytest==8.4.2
 pytest-asyncio==1.2.0
 sqlalchemy==2.0.44
 psycopg2-binary==2.9.11
+pymupdf==1.26.6
+langchain-ollama==1.0.1

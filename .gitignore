@@ -116,6 +116,8 @@ modules.xml
 # https://plugins.jetbrains.com/plugin/8053-azure-toolkit-for-intellij
 .idea/**/azureSettings.xml
 
+.idea
+
 ### Python ###
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -288,6 +290,6 @@ poetry.toml
 # LSP config files
 pyrightconfig.json
 
-.env
-
 # End of https://www.toptal.com/developers/gitignore/api/pycharm,python
+
+.env
