@@ -1,6 +1,6 @@
 import datetime
 
-from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy import Column, DateTime, Integer, String, Text, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.db.symptex_db import SymptexBase
@@ -20,7 +20,7 @@ class ChatMessage(SymptexBase):
     __tablename__ = "chat_messages"
 
     id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String)
+    session_id = Column(String, ForeignKey('chat_sessions.id'))
     role = Column(String)
     content = Column(Text)
     timestamp = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
