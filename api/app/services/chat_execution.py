@@ -8,8 +8,8 @@ from langchain_core.messages import AIMessage, HumanMessage
 from sqlalchemy.orm import Session
 
 from app.db.db_utils import has_anamdocs
-from app.db.models import Case, ChatMessage, ChatSession, PatientFile
-from app.db.symptex_models import SymptexConfig
+from app.db.models import Case, PatientFile
+from app.db.symptex_models import ChatMessage, ChatSession, SymptexConfig
 from app.services.anamdocs_client import AnamDocsClient
 from app.utils.stream_filters import StreamDelimitedBlockFilter
 from chains.chat_chain import build_symptex_model
@@ -111,7 +111,7 @@ async def execute_chat(
     patient_details = format_patient_details(patient_file)
 
     session, session_error = _get_or_create_chat_session(
-        db,
+        symptex_db,
         session_id=session_id,
         patient_file=patient_file,
         medical_case=medical_case,
@@ -119,12 +119,13 @@ async def execute_chat(
     if session_error is not None:
         return session_error
 
-    previous_messages = _load_previous_messages(db, session)
-    _save_user_message(db, session=session, message=message)
+    previous_messages = _load_previous_messages(symptex_db, session)
+    _save_user_message(symptex_db, session=session, message=message)
 
     docs_cache = _build_docs_cache(patient_file)
     return _build_chat_streaming_response(
-        db=db,
+        ilvi_db=db,
+        symptex_db=symptex_db,
         message=message,
         effective_model=effective_model,
         effective_condition=effective_condition,
@@ -433,7 +434,8 @@ def _build_docs_cache(patient_file: PatientFile) -> DocumentBundleCache:
 
 async def _generate_and_store_chat_response(
     *,
-    db: Session,
+    ilvi_db: Session,
+    symptex_db: Session,
     message: str,
     effective_model: str,
     effective_condition: str,
@@ -449,7 +451,7 @@ async def _generate_and_store_chat_response(
     try:
         messages = previous_messages + [HumanMessage(content=message)]
         # Existence flag only: docs may exist even if loading/summarization fails this turn.
-        docs_available = has_anamdocs(db, patient_file.id)
+        docs_available = has_anamdocs(ilvi_db, patient_file.id)
         logger.info("Beginning text streaming")
         async for chunk in stream_response(
             model=effective_model,
@@ -479,16 +481,17 @@ async def _generate_and_store_chat_response(
             role="patient",
             content=llm_response,
         )
-        db.add(llm_message)
-        db.commit()
+        symptex_db.add(llm_message)
+        symptex_db.commit()
     except Exception:
-        db.rollback()
+        symptex_db.rollback()
         raise
 
 
 def _build_chat_streaming_response(
     *,
-    db: Session,
+    ilvi_db: Session,
+    symptex_db: Session,
     message: str,
     effective_model: str,
     effective_condition: str,
@@ -502,7 +505,8 @@ def _build_chat_streaming_response(
     try:
         return StreamingResponse(
             _generate_and_store_chat_response(
-                db=db,
+                ilvi_db=ilvi_db,
+                symptex_db=symptex_db,
                 message=message,
                 effective_model=effective_model,
                 effective_condition=effective_condition,
@@ -516,7 +520,7 @@ def _build_chat_streaming_response(
             media_type="text/plain",
         )
     except Exception as exc:
-        db.rollback()
+        symptex_db.rollback()
         logger.error("Error in execute_chat: %s", str(exc))
         return PlainTextResponse("Internal server error", status_code=500)
     
