@@ -108,7 +108,7 @@ async def execute_chat(
     patient_file, patient_error = _get_patient_file_or_404(db, medical_case)
     if patient_error is not None:
         return patient_error
-    patient_details = format_patient_details(patient_file)
+    patient_details = format_patient_details(patient_file, medical_case)
 
     session, session_error = _get_or_create_chat_session(
         symptex_db,

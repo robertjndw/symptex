@@ -249,7 +249,7 @@ def _extract_eval_payload_by_categories(text: str) -> dict | None:
 
 
 def extract_eval_payload(response: Any) -> dict:
-
+    original_response = response
     if hasattr(response, "model_dump"):
         response = response.model_dump()
 
@@ -288,7 +288,17 @@ def extract_eval_payload(response: Any) -> dict:
             return recovered_error_by_categories
 
         if parsing_error is not None:
+            logger.error(
+                "Eval JSON recovery failed. Full LLM response: %r | raw_content: %r | parsing_error: %r",
+                original_response,
+                raw_content,
+                parsing_error,
+            )
             raise ValueError(f"Invalid json output and recovery failed: {parsing_error}")
+        logger.error(
+            "Eval model did not return a structured JSON payload. Full LLM response: %r",
+            original_response,
+        )
         raise ValueError("Eval model did not return a structured JSON payload.")
 
     if isinstance(response, dict):

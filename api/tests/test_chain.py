@@ -124,7 +124,7 @@ def test_chat_uses_case_symptex_config_when_present(monkeypatch):
 
     monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
     monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
-    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
+    monkeypatch.setattr(chat_execution, "format_patient_details", lambda *_args, **_kwargs: "mocked-patient-details")
 
     fake_db = _FakeDB()
     fake_db.symptex_config = SimpleNamespace(
@@ -153,7 +153,7 @@ def test_chat_uses_defaults_when_symptex_config_missing(monkeypatch):
 
     monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
     monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
-    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
+    monkeypatch.setattr(chat_execution, "format_patient_details", lambda *_args, **_kwargs: "mocked-patient-details")
 
     fake_db = _FakeDB()
     client = _build_client(fake_db)
@@ -177,7 +177,7 @@ def test_chat_falls_back_per_field_for_invalid_symptex_config_values(monkeypatch
 
     monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
     monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
-    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
+    monkeypatch.setattr(chat_execution, "format_patient_details", lambda *_args, **_kwargs: "mocked-patient-details")
 
     fake_db = _FakeDB()
     fake_db.symptex_config = SimpleNamespace(
@@ -206,7 +206,7 @@ def test_chat_reuses_existing_session_when_case_and_patient_match(monkeypatch):
 
     monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
     monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
-    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
+    monkeypatch.setattr(chat_execution, "format_patient_details", lambda *_args, **_kwargs: "mocked-patient-details")
 
     fake_db = _FakeDB()
     fake_db.session = SimpleNamespace(
@@ -233,7 +233,7 @@ def test_chat_rejects_existing_session_from_other_owner(monkeypatch):
 
     monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
     monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
-    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
+    monkeypatch.setattr(chat_execution, "format_patient_details", lambda *_args, **_kwargs: "mocked-patient-details")
 
     fake_db = _FakeDB()
     fake_db.session = SimpleNamespace(
