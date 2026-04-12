@@ -23,6 +23,50 @@ def get_eval_categories_with_overall() -> tuple[str, ...]:
     return EVAL_CATEGORIES + (OVERALL_CATEGORY,)
 
 
+def _normalize_category_text(category: str) -> str:
+    normalized = category.strip().casefold()
+    normalized = re.sub(r"\s+", " ", normalized)
+    normalized = normalized.rstrip(".:;!,")
+    return normalized
+
+
+def _canonicalize_eval_categories(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        return payload
+
+    categories = get_eval_categories_with_overall()
+    canonical_to_official = {
+        _normalize_category_text(category): category for category in categories
+    }
+    alias_to_official = {
+        _normalize_category_text(
+            "Relevante Informationen erkennen und reagiere"
+        ): "Relevante Informationen erkennen und reagieren",
+    }
+
+    canonical_payload: dict[str, Any] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            canonical_payload[key] = value
+            continue
+
+        normalized_key = _normalize_category_text(key)
+        official_key = canonical_to_official.get(normalized_key) or alias_to_official.get(
+            normalized_key
+        )
+        if official_key is None:
+            canonical_payload[key] = value
+            continue
+
+        existing = canonical_payload.get(official_key)
+        if not isinstance(existing, dict) and isinstance(value, dict):
+            canonical_payload[official_key] = value
+        elif official_key not in canonical_payload:
+            canonical_payload[official_key] = value
+
+    return canonical_payload
+
+
 def build_eval_response_schema() -> dict:
     rating_schema = {
         "type": "object",
@@ -263,6 +307,7 @@ def extract_eval_payload(response: Any) -> dict:
 
 
 def normalize_eval_result(payload: dict) -> dict:
+    payload = _canonicalize_eval_categories(payload)
     categories = get_eval_categories_with_overall()
     normalized: dict[str, dict[str, Any]] = {}
 
