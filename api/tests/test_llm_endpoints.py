@@ -55,6 +55,25 @@ def test_runtime_chat_uses_configured_model(monkeypatch):
 def test_runtime_eval_uses_configured_model(monkeypatch):
     _configure_ollama_env(monkeypatch)
 
+    async def fake_execute_eval_for_session(*, model, symptex_db, session_id, case_id):
+        assert model == "model-b"
+        assert symptex_db is not None
+        assert session_id == "session-1"
+        assert case_id == 1
+        return PlainTextResponse("ok", status_code=200)
+
+    monkeypatch.setattr(chat, "execute_eval_for_session", fake_execute_eval_for_session)
+    client = _build_client()
+
+    response = client.post("/api/v1/eval", json={"session_id": "session-1", "case_id": 1})
+
+    assert response.status_code == 200
+    assert response.text == "ok"
+
+
+def test_runtime_eval_supports_legacy_messages(monkeypatch):
+    _configure_ollama_env(monkeypatch)
+
     async def fake_execute_eval(*, model, messages):
         assert model == "model-b"
         assert messages == []
@@ -67,6 +86,16 @@ def test_runtime_eval_uses_configured_model(monkeypatch):
 
     assert response.status_code == 200
     assert response.text == "ok"
+
+
+def test_runtime_eval_rejects_missing_payload(monkeypatch):
+    _configure_ollama_env(monkeypatch)
+    client = _build_client()
+
+    response = client.post("/api/v1/eval", json={})
+
+    assert response.status_code == 400
+    assert "Provide either session_id and case_id, or messages." in response.text
 
 
 def test_chat_options_returns_allowed_values(monkeypatch):

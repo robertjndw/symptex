@@ -139,18 +139,31 @@ async def execute_chat(
 
 async def execute_eval(*, model: str, messages: list) -> PlainTextResponse:
     try:
-        lc_messages = []
-        for msg in messages:
-            if msg["role"] == "user":
-                lc_messages.append(HumanMessage(content=msg["output"]))
-            elif msg["role"] in {"patient", "assistant"}:
-                lc_messages.append(AIMessage(content=msg["output"]))
+        lc_messages = _map_eval_messages(messages)
 
         evaluation_text = await eval_history(lc_messages, model=model)
         return PlainTextResponse(evaluation_text, status_code=200)
     except Exception as exc:
         logger.error("Error rating chat: %s", str(exc))
         return PlainTextResponse("Error rating chat", status_code=500)
+
+
+async def execute_eval_for_session(
+    *,
+    model: str,
+    symptex_db: Session,
+    session_id: str,
+    case_id: int,
+) -> PlainTextResponse:
+    messages, error = _load_eval_messages_from_session(
+        symptex_db=symptex_db,
+        session_id=session_id,
+        case_id=case_id,
+    )
+    if error is not None:
+        return error
+
+    return await execute_eval(model=model, messages=messages)
 
 async def stream_response(
     model: str,
@@ -311,6 +324,106 @@ def _validate_chat_message(message: str) -> PlainTextResponse | None:
         logger.error("Empty message received")
         return PlainTextResponse("Message cannot be empty", status_code=400)
     return None
+
+
+def _map_eval_messages(messages: list) -> list[HumanMessage | AIMessage]:
+    lc_messages: list[HumanMessage | AIMessage] = []
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("output")
+        if not isinstance(content, str):
+            continue
+        if role == "user":
+            lc_messages.append(HumanMessage(content=content))
+        elif role in {"patient", "assistant"}:
+            lc_messages.append(AIMessage(content=content))
+    return lc_messages
+
+
+def _load_eval_messages_from_session(
+    *,
+    symptex_db: Session,
+    session_id: str,
+    case_id: int,
+) -> tuple[list[dict] | None, PlainTextResponse | None]:
+    session, session_error = _load_session_for_case(
+        symptex_db=symptex_db,
+        session_id=session_id,
+        case_id=case_id,
+        context="Eval",
+    )
+    if session_error is not None:
+        return None, session_error
+
+    chat_history = (
+        symptex_db.query(ChatMessage)
+        .filter(ChatMessage.session_id == session.id)
+        .order_by(ChatMessage.timestamp.asc())
+        .all()
+    )
+    messages = [
+        {"role": msg.role, "output": msg.content}
+        for msg in chat_history
+        if msg.role in {"user", "patient", "assistant"}
+    ]
+    if not messages:
+        return None, PlainTextResponse("No messages found for session.", status_code=400)
+
+    return messages, None
+
+
+def load_chat_history_for_session(
+    *,
+    symptex_db: Session,
+    session_id: str,
+    case_id: int,
+) -> tuple[list[ChatMessage] | None, PlainTextResponse | None]:
+    session, session_error = _load_session_for_case(
+        symptex_db=symptex_db,
+        session_id=session_id,
+        case_id=case_id,
+        context="History",
+    )
+    if session_error is not None:
+        return None, session_error
+
+    chat_history = (
+        symptex_db.query(ChatMessage)
+        .filter(ChatMessage.session_id == session.id)
+        .order_by(ChatMessage.timestamp.asc())
+        .all()
+    )
+    filtered_messages = [
+        msg
+        for msg in chat_history
+        if msg.role in {"user", "patient", "assistant"}
+    ]
+    return filtered_messages, None
+
+
+def _load_session_for_case(
+    *,
+    symptex_db: Session,
+    session_id: str,
+    case_id: int,
+    context: str,
+) -> tuple[ChatSession | None, PlainTextResponse | None]:
+    session = symptex_db.query(ChatSession).filter(ChatSession.id == session_id).first()
+    if not session:
+        return None, PlainTextResponse("Session not found.", status_code=404)
+
+    session_case_id = getattr(session, "case_id", None)
+    if session_case_id != case_id:
+        logger.warning(
+            "%s session ownership mismatch for session_id=%s requested_case_id=%s actual_case_id=%s",
+            context,
+            session_id,
+            case_id,
+            session_case_id,
+        )
+        return None, PlainTextResponse("Session does not belong to this case.", status_code=409)
+
+    return session, None
 
 
 def _get_case_or_404(db: Session, case_id: int) -> tuple[Case | None, PlainTextResponse | None]:
