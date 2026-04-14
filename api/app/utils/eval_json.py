@@ -17,6 +17,7 @@ EVAL_CATEGORIES = (
     "Effizienz und Datenqualität",
 )
 OVERALL_CATEGORY = "Gesamtbewertung"
+IMPROVEMENT_SUGGESTION_KEY = "verbesserungsvorschlag"
 
 
 def get_eval_categories_with_overall() -> tuple[str, ...]:
@@ -73,8 +74,9 @@ def build_eval_response_schema() -> dict:
         "properties": {
             "score": {"type": "integer", "minimum": 1, "maximum": 5},
             "message": {"type": "string", "minLength": 1},
+            IMPROVEMENT_SUGGESTION_KEY: {"type": "string", "minLength": 1},
         },
-        "required": ["score", "message"],
+        "required": ["score", "message", IMPROVEMENT_SUGGESTION_KEY],
         "additionalProperties": False,
     }
 
@@ -223,29 +225,43 @@ def _extract_eval_payload_by_categories(text: str) -> dict | None:
             return None
         score = int(score_match.group(1))
 
-        message_key = obj_text.find('"message"')
-        if message_key == -1:
+        message_value = _extract_json_string_field(obj_text, "message")
+        if message_value is None:
             return None
-        message_colon = obj_text.find(":", message_key)
-        if message_colon == -1:
-            return None
-        message_start_quote = obj_text.find('"', message_colon + 1)
-        if message_start_quote == -1:
+        message_value = message_value.strip()
+        if not message_value:
             return None
 
-        message_end_quote = obj_text.rfind('"')
-        if message_end_quote <= message_start_quote:
-            return None
-
-        message_value = obj_text[message_start_quote + 1 : message_end_quote]
-        message_value = message_value.replace('\\"', '"').strip()
+        verbesserungsvorschlag = _extract_json_string_field(
+            obj_text, IMPROVEMENT_SUGGESTION_KEY
+        )
+        if isinstance(verbesserungsvorschlag, str):
+            verbesserungsvorschlag = verbesserungsvorschlag.strip()
+            if not verbesserungsvorschlag:
+                return None
 
         payload[category] = {
             "score": score,
             "message": message_value,
         }
+        if isinstance(verbesserungsvorschlag, str):
+            payload[category][IMPROVEMENT_SUGGESTION_KEY] = verbesserungsvorschlag
 
     return payload
+
+
+def _extract_json_string_field(content: str, key: str) -> str | None:
+    match = re.search(
+        rf'"{re.escape(key)}"\s*:\s*"((?:\\.|[^"\\])*)"',
+        content,
+    )
+    if not match:
+        return None
+    raw_value = match.group(1)
+    try:
+        return json.loads(f'"{raw_value}"')
+    except json.JSONDecodeError:
+        return raw_value.replace('\\"', '"')
 
 
 def extract_eval_payload(response: Any) -> dict:
@@ -336,9 +352,14 @@ def normalize_eval_result(payload: dict) -> dict:
         if not isinstance(message, str) or not message.strip():
             raise ValueError(f"Invalid message for category '{category}'")
 
+        verbesserungsvorschlag = item.get(IMPROVEMENT_SUGGESTION_KEY)
+        if not isinstance(verbesserungsvorschlag, str) or not verbesserungsvorschlag.strip():
+            raise ValueError(f"Invalid {IMPROVEMENT_SUGGESTION_KEY} for category '{category}'")
+
         normalized[category] = {
             "score": score,
             "message": message.strip(),
+            IMPROVEMENT_SUGGESTION_KEY: verbesserungsvorschlag.strip(),
         }
 
     return normalized

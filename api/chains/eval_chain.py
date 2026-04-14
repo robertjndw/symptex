@@ -57,9 +57,10 @@ EVAL_SYSTEM_PROMPT_TEMPLATE = """
             Das JSON muss exakt diese obersten Schlüssel enthalten:
 {json_keys}
 
-            Jeder dieser Schlüssel hat als Wert ein JSON-Objekt mit genau zwei Feldern:
+            Jeder dieser Schlüssel hat als Wert ein JSON-Objekt mit genau drei Feldern:
             * score: Integer von 1 bis 5
-            * message: String mit Begründung; bei den 8 Kriterien inkl. Verbesserungsvorschlag, bei Gesamtbewertung inkl. Stärken und Verbesserungspotenzial
+            * message: String mit Begründung; bei den 8 Kriterien inkl. konkreten Beispielen aus dem Dialog, bei Gesamtbewertung inkl. Stärken
+            * verbesserungsvorschlag: String mit konkretem Verbesserungsvorschlag für diese Kategorie
             """
 
 def get_eval_prompt() -> ChatPromptTemplate:

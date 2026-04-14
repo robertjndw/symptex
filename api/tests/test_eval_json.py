@@ -13,6 +13,7 @@ def _build_valid_payload() -> dict:
         category: {
             "score": 4,
             "message": f"Bewertung fuer {category}",
+            "verbesserungsvorschlag": f"Verbesserung fuer {category}",
         }
         for category in categories
     }
@@ -35,4 +36,26 @@ def test_normalize_eval_result_still_requires_all_categories():
     payload.pop("Zusammenfassung geben")
 
     with pytest.raises(ValueError, match="Missing or invalid category: Zusammenfassung geben"):
+        normalize_eval_result(payload)
+
+
+def test_normalize_eval_result_requires_verbesserungsvorschlag():
+    payload = _build_valid_payload()
+    payload["Gesprächsführung übernehmen"].pop("verbesserungsvorschlag")
+
+    with pytest.raises(
+        ValueError,
+        match="Invalid verbesserungsvorschlag for category 'Gesprächsführung übernehmen'",
+    ):
+        normalize_eval_result(payload)
+
+
+def test_normalize_eval_result_rejects_blank_verbesserungsvorschlag():
+    payload = _build_valid_payload()
+    payload["Gesamtbewertung"]["verbesserungsvorschlag"] = "   "
+
+    with pytest.raises(
+        ValueError,
+        match="Invalid verbesserungsvorschlag for category 'Gesamtbewertung'",
+    ):
         normalize_eval_result(payload)

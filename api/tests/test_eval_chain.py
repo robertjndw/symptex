@@ -14,6 +14,7 @@ def _build_valid_payload() -> dict:
         category: {
             "score": 4,
             "message": f"Bewertung fuer {category}",
+            "verbesserungsvorschlag": f"Verbesserung fuer {category}",
         }
         for category in get_eval_categories_with_overall()
     }
@@ -78,6 +79,8 @@ def test_get_eval_prompt_contains_categories_and_required_keys():
         assert category in system_content
     for key in get_eval_categories_with_overall():
         assert key in system_content
+    assert "genau drei Feldern" in system_content
+    assert "verbesserungsvorschlag" in system_content
     assert "Gib ausschließlich ein JSON-Objekt zurück" in system_content
 
 
