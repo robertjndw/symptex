@@ -3,7 +3,7 @@ import logging
 import os
 from typing import Sequence
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.prompts.chat import SystemMessagePromptTemplate
 from langchain_openai import ChatOpenAI
@@ -52,6 +52,7 @@ EVAL_SYSTEM_PROMPT_TEMPLATE = """
             Analysiere den vorgelegten Arzt-Patienten-Dialog und vergib für jedes der 8 Kriterien eine Punktzahl (1-5).
             Begründe jede Bewertung mit konkreten Beispielen aus dem Dialog.
             Die Bewertung soll konstruktiv sein und Verbesserungspotenziale aufzeigen.
+            Triff keine Annahmen über die Geschlechtsidentität von Arzt und Patient; verwende geschlechtsneutrale Formulierungen, sofern das Geschlecht nicht explizit im Dialog genannt wird.
 
             Gib ausschließlich ein JSON-Objekt zurück und keinen zusätzlichen Text, kein Markdown und keine Code-Fences.
             Das JSON muss exakt diese obersten Schlüssel enthalten:
@@ -116,7 +117,7 @@ def _normalize_and_serialize_eval_payload(payload: dict) -> str:
 def _build_ollama_attempt_messages(mapped_messages: list[BaseMessage]) -> list[list[BaseMessage]]:
     return [
         list(mapped_messages),
-        list(mapped_messages) + [HumanMessage(content=OLLAMA_JSON_RETRY_INSTRUCTION)],
+        list(mapped_messages) + [SystemMessage(content=OLLAMA_JSON_RETRY_INSTRUCTION)],
     ]
 
 def _is_raw_eval_logging_enabled() -> bool:

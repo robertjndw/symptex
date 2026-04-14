@@ -165,7 +165,7 @@ def test_eval_history_ollama_retries_and_succeeds_on_second_attempt(monkeypatch)
 
     assert len(chain.calls) == 2
     second_attempt_messages = chain.calls[1]["messages"]
-    assert isinstance(second_attempt_messages[-1], HumanMessage)
+    assert isinstance(second_attempt_messages[-1], SystemMessage)
     assert second_attempt_messages[-1].content == eval_chain.OLLAMA_JSON_RETRY_INSTRUCTION
     assert json.loads(result) == payload
 
