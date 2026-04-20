@@ -1,6 +1,6 @@
 services:
   frontend:
-    image: ghcr.io/ilvi-platform/symptex-frontend:${SYMTEX_API_TAG:-latest}
+    image: ghcr.io/ilvi-platform/symptex-frontend:${SYMPTEX_API_TAG:-latest}
     build:
       context: ./frontend
     ports:
@@ -8,7 +8,7 @@ services:
     restart: always
 
   symptex:
-    image: ghcr.io/ilvi-platform/symptex-api:${SYMTEX_API_TAG:-latest}
+    image: ghcr.io/ilvi-platform/symptex-api:${SYMPTEX_API_TAG:-latest}
     build:
       context: ./api
     ports:
