@@ -1,25 +1,7 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Date, Float
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 from app.db.db import Base
 import datetime
-
-class ChatSession(Base):
-    __tablename__ = "chat_sessions"
-
-    id = Column(String, primary_key=True, index=True)
-    patient_file_id = Column(Integer, ForeignKey('patient_files.id'))
-    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
-    messages = relationship("ChatMessage", back_populates="session")
-
-class ChatMessage(Base):
-    __tablename__ = "chat_messages"
-
-    id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String, ForeignKey('chat_sessions.id'))
-    role = Column(String)
-    content = Column(Text)
-    timestamp = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
-    session = relationship("ChatSession", back_populates="messages")
 
 class PatientFile(Base):
     __tablename__ = "patient_files"
@@ -34,6 +16,8 @@ class PatientFile(Base):
     gender_medical = Column(String)
     ethnic_origin = Column(String)
     anamneses = relationship("Anamnesis", back_populates="patient_file")
+    cases = relationship("Case", back_populates="patient_file")
+    
 
 class Anamnesis(Base):
     __tablename__ = "anamneses"
@@ -43,3 +27,50 @@ class Anamnesis(Base):
     answer = Column(String)
     patient_file_id = Column(Integer, ForeignKey("patient_files.id"))
     patient_file = relationship("PatientFile", back_populates="anamneses")
+    anam_docs = relationship("AnamDoc", back_populates="anamnesis")
+
+class AnamDoc(Base):
+    __tablename__ = "anam_docs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    category = Column(String, nullable=False)
+    original_name = Column(String, nullable=False)
+    storage_key = Column(String, nullable=False, unique=True, index=True)
+
+    anamnesis_id = Column(
+        Integer,
+        ForeignKey("anamneses.id", onupdate="CASCADE", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    anamnesis = relationship("Anamnesis", back_populates="anam_docs")
+
+
+class Case(Base):
+    __tablename__ = "cases"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc), nullable=False)
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        onupdate=lambda: datetime.datetime.now(datetime.timezone.utc),
+        nullable=False,
+    )
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    title = Column(String, nullable=False)
+    treatment_reason = Column(String, nullable=False)
+    start_date = Column(DateTime, nullable=True)
+    due_date = Column(DateTime, nullable=True)
+    marked = Column(Boolean, default=False, nullable=False)
+    time_budget = Column(Float, nullable=False)
+    money_budget = Column(Float, nullable=False)
+    diagnosis = Column(String, nullable=False)
+    treatment = Column(Text, nullable=True)
+    is_draft = Column(Boolean, nullable=False)
+
+    lecture_id = Column(Integer, nullable=False)
+    patient_file_id = Column(Integer, ForeignKey("patient_files.id"), nullable=False)
+
+    patient_file = relationship("PatientFile", back_populates="cases")
