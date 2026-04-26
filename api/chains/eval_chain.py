@@ -60,6 +60,55 @@ EVAL_SYSTEM_PROMPT_TEMPLATE = """
             * score: Integer von 1 bis 5
             * message: String mit Begründung; bei den 8 Kriterien inkl. konkreten Beispielen aus dem Dialog, bei Gesamtbewertung inkl. Stärken
             * verbesserungsvorschlag: String mit konkretem Verbesserungsvorschlag für diese Kategorie
+
+            One-shot-Schablone (nur Struktur, keine inhaltlichen Beispielwerte):
+            {{
+              "Gesprächsführung übernehmen": {{
+                "score": "<score_1_bis_5>",
+                "message": "<begruendung_aus_dem_dialog>",
+                "verbesserungsvorschlag": "<konkreter_vorschlag>"
+              }},
+              "Relevante Informationen erkennen und reagieren": {{
+                "score": "<score_1_bis_5>",
+                "message": "<begruendung_aus_dem_dialog>",
+                "verbesserungsvorschlag": "<konkreter_vorschlag>"
+              }},
+              "Symptome präzisieren": {{
+                "score": "<score_1_bis_5>",
+                "message": "<begruendung_aus_dem_dialog>",
+                "verbesserungsvorschlag": "<konkreter_vorschlag>"
+              }},
+              "Pathophysiologisch begründete Fragen stellen": {{
+                "score": "<score_1_bis_5>",
+                "message": "<begruendung_aus_dem_dialog>",
+                "verbesserungsvorschlag": "<konkreter_vorschlag>"
+              }},
+              "Logische Fragerichtung": {{
+                "score": "<score_1_bis_5>",
+                "message": "<begruendung_aus_dem_dialog>",
+                "verbesserungsvorschlag": "<konkreter_vorschlag>"
+              }},
+              "Informationen beim Patienten rückbestätigen": {{
+                "score": "<score_1_bis_5>",
+                "message": "<begruendung_aus_dem_dialog>",
+                "verbesserungsvorschlag": "<konkreter_vorschlag>"
+              }},
+              "Zusammenfassung geben": {{
+                "score": "<score_1_bis_5>",
+                "message": "<begruendung_aus_dem_dialog>",
+                "verbesserungsvorschlag": "<konkreter_vorschlag>"
+              }},
+              "Effizienz und Datenqualität": {{
+                "score": "<score_1_bis_5>",
+                "message": "<begruendung_aus_dem_dialog>",
+                "verbesserungsvorschlag": "<konkreter_vorschlag>"
+              }},
+              "Gesamtbewertung": {{
+                "score": "<score_1_bis_5>",
+                "message": "<gesamtbegruendung_mit_staerken>",
+                "verbesserungsvorschlag": "<konkreter_vorschlag>"
+              }}
+            }}
             """
 
 def get_eval_prompt() -> ChatPromptTemplate:
@@ -68,7 +117,8 @@ def get_eval_prompt() -> ChatPromptTemplate:
     return ChatPromptTemplate.from_messages(
         [
             SystemMessagePromptTemplate.from_template(
-                EVAL_SYSTEM_PROMPT_TEMPLATE.format(criteria=criteria, json_keys=json_keys)
+                EVAL_SYSTEM_PROMPT_TEMPLATE,
+                partial_variables={"criteria": criteria, "json_keys": json_keys},
             ),
             MessagesPlaceholder(variable_name="messages"),
         ]
