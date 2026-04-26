@@ -6,7 +6,6 @@ from typing import Sequence
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.prompts.chat import SystemMessagePromptTemplate
-from langchain_openai import ChatOpenAI
 
 from app.utils.eval_json import (
     EVAL_CATEGORIES,
@@ -15,23 +14,22 @@ from app.utils.eval_json import (
     get_eval_categories_with_overall,
     normalize_eval_result,
 )
-from chains.llm import get_llm, get_llm_config
+from chains.llm import get_llm
 
 logger = logging.getLogger(__name__)
 
 SYMPTEX_EVAL_LOG_RAW_ENV_VAR = "SYMPTEX_EVAL_LOG_RAW"
 RAW_LOG_TRUE_VALUES = {"1", "true", "yes", "on"}
 LOG_CONTENT_LIMIT = 4000
-OLLAMA_EVAL_TEMPERATURE = 0.2
-OLLAMA_MAX_ATTEMPTS = 2
-OLLAMA_JSON_RETRY_INSTRUCTION = (
+EVAL_MAX_ATTEMPTS = 2
+EVAL_JSON_RETRY_INSTRUCTION = (
     "WICHTIG: Antworte jetzt ausschließlich mit einem gültigen JSON-Objekt "
     "mit den geforderten Schlüsseln und Feldern. Kein weiterer Text."
 )
 
 
 class EmptyEvalOutputError(ValueError):
-    """Raised when Ollama returns no usable content or tool-call payload."""
+    """Raised when eval returns no usable content or tool-call payload."""
 
 
 EVAL_SYSTEM_PROMPT_TEMPLATE = """
@@ -78,32 +76,20 @@ def get_eval_prompt() -> ChatPromptTemplate:
 
 async def eval_history(messages: list, model: str) -> str:
     mapped_messages: list[BaseMessage] = []
-    provider = "unresolved"
     try:
         prompt = get_eval_prompt()
         mapped_messages = _role_map_for_eval(messages)
         logger.debug("Evaluating %d mapped messages for model=%s", len(mapped_messages), model)
-        llm_config = get_llm_config()
-        provider = llm_config.provider
-
-        if provider == "ollama":
-            payload = await _run_ollama_eval_with_retries(
-                prompt=prompt,
-                mapped_messages=mapped_messages,
-                model=model,
-            )
-        else:
-            payload = await _run_structured_eval(
-                prompt=prompt,
-                mapped_messages=mapped_messages,
-                model=model,
-            )
+        payload = await _run_eval_with_retries(
+            prompt=prompt,
+            mapped_messages=mapped_messages,
+            model=model,
+        )
 
         return _normalize_and_serialize_eval_payload(payload)
     except Exception as error:
-        logger.error(
-            "Error in eval_history | provider=%s | model=%s | error=%s",
-            provider,
+        logger.exception(
+            "Error in eval_history | model=%s | error=%s",
             model,
             str(error),
         )
@@ -114,11 +100,16 @@ def _normalize_and_serialize_eval_payload(payload: dict) -> str:
     return json.dumps(normalized, ensure_ascii=False, indent=2)
 
 
-def _build_ollama_attempt_messages(mapped_messages: list[BaseMessage]) -> list[list[BaseMessage]]:
-    return [
+def _build_retry_attempt_messages(mapped_messages: list[BaseMessage]) -> list[list[BaseMessage]]:
+    attempts = [
         list(mapped_messages),
-        list(mapped_messages) + [SystemMessage(content=OLLAMA_JSON_RETRY_INSTRUCTION)],
+        list(mapped_messages) + [SystemMessage(content=EVAL_JSON_RETRY_INSTRUCTION)],
     ]
+    if len(attempts) != EVAL_MAX_ATTEMPTS:
+        raise ValueError(
+            f"Eval retry attempt plan mismatch: expected {EVAL_MAX_ATTEMPTS}, got {len(attempts)}."
+        )
+    return attempts
 
 def _is_raw_eval_logging_enabled() -> bool:
     return os.getenv(SYMPTEX_EVAL_LOG_RAW_ENV_VAR, "").strip().lower() in RAW_LOG_TRUE_VALUES
@@ -181,7 +172,7 @@ def _log_response_diagnostics(
     )
 
 
-def _extract_ollama_tool_call_args(raw_response: object) -> dict | str | None:
+def _extract_tool_call_args(raw_response: object) -> dict | str | None:
     tool_calls = getattr(raw_response, "tool_calls", None)
     if isinstance(tool_calls, list):
         for tool_call in tool_calls:
@@ -217,35 +208,34 @@ def _extract_payload_from_tool_call_args(tool_call_args: dict | str) -> dict:
         return extract_eval_payload(tool_call_args)
     except Exception as tool_call_error:
         raise ValueError(
-            "Ollama eval payload recovery failed after parser and tool-call fallback."
+            "Eval payload recovery failed after parser and tool-call fallback."
         ) from tool_call_error
 
 
-def _extract_payload_with_ollama_fallback(raw_response: object) -> dict:
+def _extract_payload_with_fallback(raw_response: object) -> dict:
+    try:
+        return extract_eval_payload(raw_response)
+    except Exception as primary_error:
+        pass
+
     raw_content = getattr(raw_response, "content", raw_response)
     raw_text = _extract_raw_text_for_log(raw_content)
-    tool_call_args = _extract_ollama_tool_call_args(raw_response)
+    tool_call_args = _extract_tool_call_args(raw_response)
 
     if not raw_text.strip():
         if tool_call_args is None:
             raise EmptyEvalOutputError(
-                "Ollama eval returned empty output (no content and no tool-call payload)."
+                "Eval returned empty output (no content and no tool-call payload)."
             )
         return _extract_payload_from_tool_call_args(tool_call_args)
 
-    if raw_text.strip():
-        try:
-            return extract_eval_payload(raw_text)
-        except Exception:
-            # Fall back to additional sources below.
-            pass
-
     try:
-        return extract_eval_payload(raw_response)
-    except Exception as primary_error:
+        return extract_eval_payload(raw_text)
+    except Exception as raw_text_error:
         if tool_call_args is None:
-            raise primary_error
-        return _extract_payload_from_tool_call_args(tool_call_args)
+            raise primary_error from raw_text_error
+
+    return _extract_payload_from_tool_call_args(tool_call_args)
 
 
 def _log_structured_eval_parse_diagnostics(response: object) -> None:
@@ -288,44 +278,41 @@ def _role_map_for_eval(messages: Sequence[BaseMessage]) -> list[BaseMessage]:
 def _build_eval_llm(model: str):
     llm = get_llm(model)
     schema = build_eval_response_schema()
-
-    if isinstance(llm, ChatOpenAI):
-        return llm.with_structured_output(schema, method="json_schema", strict=True, include_raw=True)
-
     return llm.with_structured_output(schema, method="json_schema", include_raw=True)
 
 
 def _to_prompt_bullets(items: Sequence[str]) -> str:
     return "\n".join(f"            * {item}" for item in items)
 
-async def _run_ollama_eval_with_retries(
+async def _run_eval_with_retries(
     *,
     prompt: ChatPromptTemplate,
     mapped_messages: list[BaseMessage],
     model: str,
 ) -> dict:
-    llm = get_llm(model, temperature=OLLAMA_EVAL_TEMPERATURE)
+    llm = _build_eval_llm(model)
     chain = prompt | llm
-    attempts = _build_ollama_attempt_messages(mapped_messages)[:OLLAMA_MAX_ATTEMPTS]
+    attempts = _build_retry_attempt_messages(mapped_messages)
     last_error: Exception | None = None
 
     for attempt, attempt_messages in enumerate(attempts, start=1):
         response = await chain.ainvoke({"messages": attempt_messages})
         try:
-            payload = _extract_payload_with_ollama_fallback(response)
+            _log_structured_eval_parse_diagnostics(response)
+            payload = _extract_payload_with_fallback(response)
             # Validate payload shape during retries so malformed-but-parseable JSON can trigger retry.
             normalize_eval_result(payload)
             return payload
         except Exception as parse_exc:
             last_error = parse_exc
             stage = (
-                "ollama-empty-output"
+                "eval-empty-output"
                 if isinstance(parse_exc, EmptyEvalOutputError)
-                else "ollama-parse-failure"
+                else "eval-parse-failure"
             )
-            error_kind = "empty output" if stage == "ollama-empty-output" else "parse/validation"
+            error_kind = "empty output" if stage == "eval-empty-output" else "parse/validation"
             logger.warning(
-                "Ollama eval %s failed | attempt=%d/%d | error=%s",
+                "Eval %s failed | attempt=%d/%d | error=%s",
                 error_kind,
                 attempt,
                 len(attempts),
@@ -340,21 +327,8 @@ async def _run_ollama_eval_with_retries(
             )
             if attempt < len(attempts):
                 logger.warning(
-                    "Retrying Ollama eval with reinforcement prompt | next_attempt=%d",
+                    "Retrying eval with reinforcement prompt | next_attempt=%d",
                     attempt + 1,
                 )
 
-    raise last_error or ValueError("Ollama eval parsing failed without a specific error.")
-
-
-async def _run_structured_eval(
-    *,
-    prompt: ChatPromptTemplate,
-    mapped_messages: list[BaseMessage],
-    model: str,
-) -> dict:
-    llm = _build_eval_llm(model)
-    chain = prompt | llm
-    response = await chain.ainvoke({"messages": mapped_messages})
-    _log_structured_eval_parse_diagnostics(response)
-    return extract_eval_payload(response)
+    raise last_error or ValueError("Eval parsing failed without a specific error.")

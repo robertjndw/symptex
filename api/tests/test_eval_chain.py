@@ -45,6 +45,15 @@ class _FakePrompt:
         return self.chain
 
 
+class _InspectableLLM:
+    def __init__(self):
+        self.with_structured_output_calls: list[tuple[tuple, dict]] = []
+
+    def with_structured_output(self, *args, **kwargs):
+        self.with_structured_output_calls.append((args, kwargs))
+        return object()
+
+
 def _build_raw_response(content: object, *, tool_calls=None, additional_kwargs=None):
     return SimpleNamespace(
         content=content,
@@ -99,7 +108,6 @@ def test_eval_history_structured_provider_returns_normalized_json(monkeypatch):
     build_calls: list[str] = []
 
     monkeypatch.setattr(eval_chain, "get_eval_prompt", lambda: prompt)
-    monkeypatch.setattr(eval_chain, "get_llm_config", lambda: SimpleNamespace(provider="chatai"))
     monkeypatch.setattr(
         eval_chain,
         "_build_eval_llm",
@@ -125,30 +133,46 @@ def test_eval_history_structured_provider_returns_normalized_json(monkeypatch):
     assert result.startswith("{\n")
 
 
-def test_eval_history_ollama_succeeds_on_first_attempt(monkeypatch):
+def test_eval_history_succeeds_on_first_attempt(monkeypatch):
     payload = _build_valid_payload()
     chain = _FakeChain([_build_raw_response(json.dumps(payload, ensure_ascii=False))])
     prompt = _FakePrompt(chain)
-    llm_calls: list[tuple[str, float | None]] = []
-
     monkeypatch.setattr(eval_chain, "get_eval_prompt", lambda: prompt)
-    monkeypatch.setattr(eval_chain, "get_llm_config", lambda: SimpleNamespace(provider="ollama"))
     monkeypatch.setattr(
         eval_chain,
-        "get_llm",
-        lambda model, temperature=None: llm_calls.append((model, temperature)) or object(),
+        "_build_eval_llm",
+        lambda model: object(),
     )
 
     result = asyncio.run(
         eval_chain.eval_history([HumanMessage(content="Wie geht es Ihnen?")], model="model-a")
     )
 
-    assert llm_calls == [("model-a", eval_chain.OLLAMA_EVAL_TEMPERATURE)]
     assert len(chain.calls) == 1
     assert json.loads(result) == payload
 
 
-def test_eval_history_ollama_retries_and_succeeds_on_second_attempt(monkeypatch):
+def test_build_eval_llm_uses_non_strict_structured_output(monkeypatch):
+    inspected_llm = _InspectableLLM()
+    get_llm_calls: list[tuple[str, float | None]] = []
+
+    monkeypatch.setattr(
+        eval_chain,
+        "get_llm",
+        lambda model, temperature=None: get_llm_calls.append((model, temperature)) or inspected_llm,
+    )
+
+    _ = eval_chain._build_eval_llm("model-a")
+
+    assert get_llm_calls == [("model-a", None)]
+    assert len(inspected_llm.with_structured_output_calls) == 1
+    _, kwargs = inspected_llm.with_structured_output_calls[0]
+    assert kwargs["method"] == "json_schema"
+    assert kwargs["include_raw"] is True
+    assert "strict" not in kwargs
+
+
+def test_eval_history_retries_and_succeeds_on_second_attempt(monkeypatch):
     payload = _build_valid_payload()
     first_response = _build_raw_response("kein json")
     second_response = _build_raw_response(json.dumps(payload, ensure_ascii=False))
@@ -156,8 +180,7 @@ def test_eval_history_ollama_retries_and_succeeds_on_second_attempt(monkeypatch)
     prompt = _FakePrompt(chain)
 
     monkeypatch.setattr(eval_chain, "get_eval_prompt", lambda: prompt)
-    monkeypatch.setattr(eval_chain, "get_llm_config", lambda: SimpleNamespace(provider="ollama"))
-    monkeypatch.setattr(eval_chain, "get_llm", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(eval_chain, "_build_eval_llm", lambda *_args, **_kwargs: object())
 
     result = asyncio.run(
         eval_chain.eval_history([HumanMessage(content="Wie geht es Ihnen?")], model="model-a")
@@ -166,11 +189,11 @@ def test_eval_history_ollama_retries_and_succeeds_on_second_attempt(monkeypatch)
     assert len(chain.calls) == 2
     second_attempt_messages = chain.calls[1]["messages"]
     assert isinstance(second_attempt_messages[-1], SystemMessage)
-    assert second_attempt_messages[-1].content == eval_chain.OLLAMA_JSON_RETRY_INSTRUCTION
+    assert second_attempt_messages[-1].content == eval_chain.EVAL_JSON_RETRY_INSTRUCTION
     assert json.loads(result) == payload
 
 
-def test_eval_history_ollama_retries_when_first_json_is_missing_required_category(monkeypatch):
+def test_eval_history_retries_when_first_json_is_missing_required_category(monkeypatch):
     payload = _build_valid_payload()
     invalid_payload = dict(payload)
     invalid_payload.pop("Gesprächsführung übernehmen")
@@ -181,8 +204,7 @@ def test_eval_history_ollama_retries_when_first_json_is_missing_required_categor
     prompt = _FakePrompt(chain)
 
     monkeypatch.setattr(eval_chain, "get_eval_prompt", lambda: prompt)
-    monkeypatch.setattr(eval_chain, "get_llm_config", lambda: SimpleNamespace(provider="ollama"))
-    monkeypatch.setattr(eval_chain, "get_llm", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(eval_chain, "_build_eval_llm", lambda *_args, **_kwargs: object())
 
     result = asyncio.run(
         eval_chain.eval_history([HumanMessage(content="Wie geht es Ihnen?")], model="model-a")
@@ -190,11 +212,11 @@ def test_eval_history_ollama_retries_when_first_json_is_missing_required_categor
 
     assert len(chain.calls) == 2
     second_attempt_messages = chain.calls[1]["messages"]
-    assert second_attempt_messages[-1].content == eval_chain.OLLAMA_JSON_RETRY_INSTRUCTION
+    assert second_attempt_messages[-1].content == eval_chain.EVAL_JSON_RETRY_INSTRUCTION
     assert json.loads(result) == payload
 
 
-def test_eval_history_ollama_retries_when_first_attempt_has_empty_output(monkeypatch):
+def test_eval_history_retries_when_first_attempt_has_empty_output(monkeypatch):
     payload = _build_valid_payload()
     first_response = _build_raw_response("")
     second_response = _build_raw_response(json.dumps(payload, ensure_ascii=False))
@@ -202,8 +224,7 @@ def test_eval_history_ollama_retries_when_first_attempt_has_empty_output(monkeyp
     prompt = _FakePrompt(chain)
 
     monkeypatch.setattr(eval_chain, "get_eval_prompt", lambda: prompt)
-    monkeypatch.setattr(eval_chain, "get_llm_config", lambda: SimpleNamespace(provider="ollama"))
-    monkeypatch.setattr(eval_chain, "get_llm", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(eval_chain, "_build_eval_llm", lambda *_args, **_kwargs: object())
 
     result = asyncio.run(
         eval_chain.eval_history([HumanMessage(content="Wie geht es Ihnen?")], model="model-a")
@@ -211,11 +232,11 @@ def test_eval_history_ollama_retries_when_first_attempt_has_empty_output(monkeyp
 
     assert len(chain.calls) == 2
     second_attempt_messages = chain.calls[1]["messages"]
-    assert second_attempt_messages[-1].content == eval_chain.OLLAMA_JSON_RETRY_INSTRUCTION
+    assert second_attempt_messages[-1].content == eval_chain.EVAL_JSON_RETRY_INSTRUCTION
     assert json.loads(result) == payload
 
 
-def test_eval_history_ollama_recovers_from_tool_call_args_when_content_empty(monkeypatch):
+def test_eval_history_recovers_from_tool_call_args_when_content_empty(monkeypatch):
     payload = _build_valid_payload()
     response = _build_raw_response(
         "",
@@ -225,8 +246,7 @@ def test_eval_history_ollama_recovers_from_tool_call_args_when_content_empty(mon
     prompt = _FakePrompt(chain)
 
     monkeypatch.setattr(eval_chain, "get_eval_prompt", lambda: prompt)
-    monkeypatch.setattr(eval_chain, "get_llm_config", lambda: SimpleNamespace(provider="ollama"))
-    monkeypatch.setattr(eval_chain, "get_llm", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(eval_chain, "_build_eval_llm", lambda *_args, **_kwargs: object())
 
     result = asyncio.run(
         eval_chain.eval_history([HumanMessage(content="Wie geht es Ihnen?")], model="model-a")
@@ -245,8 +265,7 @@ def test_eval_history_returns_friendly_error_on_terminal_parse_failure(monkeypat
     prompt = _FakePrompt(chain)
 
     monkeypatch.setattr(eval_chain, "get_eval_prompt", lambda: prompt)
-    monkeypatch.setattr(eval_chain, "get_llm_config", lambda: SimpleNamespace(provider="ollama"))
-    monkeypatch.setattr(eval_chain, "get_llm", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(eval_chain, "_build_eval_llm", lambda *_args, **_kwargs: object())
 
     result = asyncio.run(
         eval_chain.eval_history([HumanMessage(content="Wie geht es Ihnen?")], model="model-a")
