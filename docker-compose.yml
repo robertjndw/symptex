@@ -12,6 +12,7 @@ services:
       - symptex-internal
 
   frontend:
+    image: ghcr.io/ilvi-platform/symptex-frontend:${SYMPTEX_API_TAG:-latest}
     build:
       context: ./frontend
     environment:
@@ -23,6 +24,7 @@ services:
     restart: always
 
   symptex:
+    image: ghcr.io/ilvi-platform/symptex-api:${SYMPTEX_API_TAG:-latest}
     build:
       context: ./api
     depends_on:
