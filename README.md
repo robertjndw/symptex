@@ -214,5 +214,3 @@ symptex/
 ├── docker-compose.yml
 └── README.md
 ```
-
-TODOs: Connect the upload of Befunde with ILVI's backend

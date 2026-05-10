@@ -11,7 +11,6 @@ from chains.document_bundle_cache import DocumentBundleCache
 logger = logging.getLogger(__name__)
 #todo consider adding ls.traceable to LLM-calling nodes
 
-#todo update file loading and system prompt
 def build_symptex_model(document_bundle_cache: DocumentBundleCache):
     logger.info("Building symptex model")
     workflow = StateGraph(state_schema=CustomState)
