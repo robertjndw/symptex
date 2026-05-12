@@ -1,5 +1,6 @@
 import os
 import asyncio
+import datetime
 from types import SimpleNamespace
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
@@ -40,6 +41,7 @@ class _FakeQuery:
 class _FakeDB:
     def __init__(self):
         self.session = None
+        self.chat_messages = []
         self.patient = SimpleNamespace(id=3)
         self.case = SimpleNamespace(
             id=3,
@@ -56,7 +58,7 @@ class _FakeDB:
         if model is ChatSession:
             return _FakeQuery(first_value=self.session)
         if model is ChatMessage:
-            return _FakeQuery(all_value=[])
+            return _FakeQuery(all_value=self.chat_messages)
         if model is SymptexConfig:
             return _FakeQuery(first_value=self.symptex_config)
         return _FakeQuery()
@@ -122,7 +124,7 @@ def test_chat_uses_case_symptex_config_when_present(monkeypatch):
 
     monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
     monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
-    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
+    monkeypatch.setattr(chat_execution, "format_patient_details", lambda *_args, **_kwargs: "mocked-patient-details")
 
     fake_db = _FakeDB()
     fake_db.symptex_config = SimpleNamespace(
@@ -151,7 +153,7 @@ def test_chat_uses_defaults_when_symptex_config_missing(monkeypatch):
 
     monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
     monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
-    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
+    monkeypatch.setattr(chat_execution, "format_patient_details", lambda *_args, **_kwargs: "mocked-patient-details")
 
     fake_db = _FakeDB()
     client = _build_client(fake_db)
@@ -175,7 +177,7 @@ def test_chat_falls_back_per_field_for_invalid_symptex_config_values(monkeypatch
 
     monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
     monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
-    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
+    monkeypatch.setattr(chat_execution, "format_patient_details", lambda *_args, **_kwargs: "mocked-patient-details")
 
     fake_db = _FakeDB()
     fake_db.symptex_config = SimpleNamespace(
@@ -204,7 +206,7 @@ def test_chat_reuses_existing_session_when_case_and_patient_match(monkeypatch):
 
     monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
     monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
-    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
+    monkeypatch.setattr(chat_execution, "format_patient_details", lambda *_args, **_kwargs: "mocked-patient-details")
 
     fake_db = _FakeDB()
     fake_db.session = SimpleNamespace(
@@ -231,7 +233,7 @@ def test_chat_rejects_existing_session_from_other_owner(monkeypatch):
 
     monkeypatch.setattr(chat_execution, "stream_response", fake_stream_response)
     monkeypatch.setattr(chat_execution, "has_anamdocs", lambda *_: False)
-    monkeypatch.setattr(chat_execution, "format_patient_details", lambda _: "mocked-patient-details")
+    monkeypatch.setattr(chat_execution, "format_patient_details", lambda *_args, **_kwargs: "mocked-patient-details")
 
     fake_db = _FakeDB()
     fake_db.session = SimpleNamespace(
@@ -268,6 +270,105 @@ def test_chat_returns_404_when_case_not_found(monkeypatch):
 
     assert response.status_code == 404
     assert "Case not found" in response.text
+
+
+def test_chat_history_returns_ordered_messages_for_valid_session():
+    fake_db = _FakeDB()
+    fake_db.session = SimpleNamespace(
+        id="session-1",
+        patient_file_id=3,
+        case_id=3,
+    )
+    fake_db.chat_messages = [
+        SimpleNamespace(
+            id=10,
+            role="user",
+            content="Hallo",
+            timestamp=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc),
+        ),
+        SimpleNamespace(
+            id=11,
+            role="patient",
+            content="Guten Tag",
+            timestamp=datetime.datetime(2026, 1, 1, 0, 1, tzinfo=datetime.timezone.utc),
+        ),
+        # Unsupported role should be excluded from response payload.
+        SimpleNamespace(
+            id=12,
+            role="system",
+            content="ignored",
+            timestamp=datetime.datetime(2026, 1, 1, 0, 2, tzinfo=datetime.timezone.utc),
+        ),
+    ]
+    client = _build_client(fake_db)
+
+    response = client.get("/api/v1/chat/history", params={"session_id": "session-1", "case_id": 3})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": "session-1",
+        "case_id": 3,
+        "messages": [
+            {
+                "id": 10,
+                "role": "user",
+                "content": "Hallo",
+                "timestamp": "2026-01-01T00:00:00Z",
+            },
+            {
+                "id": 11,
+                "role": "patient",
+                "content": "Guten Tag",
+                "timestamp": "2026-01-01T00:01:00Z",
+            },
+        ],
+    }
+
+
+def test_chat_history_returns_empty_messages_for_valid_session_without_history():
+    fake_db = _FakeDB()
+    fake_db.session = SimpleNamespace(
+        id="session-1",
+        patient_file_id=3,
+        case_id=3,
+    )
+    fake_db.chat_messages = []
+    client = _build_client(fake_db)
+
+    response = client.get("/api/v1/chat/history", params={"session_id": "session-1", "case_id": 3})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "session_id": "session-1",
+        "case_id": 3,
+        "messages": [],
+    }
+
+
+def test_chat_history_returns_404_for_unknown_session():
+    fake_db = _FakeDB()
+    fake_db.session = None
+    client = _build_client(fake_db)
+
+    response = client.get("/api/v1/chat/history", params={"session_id": "session-unknown", "case_id": 3})
+
+    assert response.status_code == 404
+    assert "Session not found." in response.text
+
+
+def test_chat_history_returns_409_for_session_case_mismatch():
+    fake_db = _FakeDB()
+    fake_db.session = SimpleNamespace(
+        id="session-1",
+        patient_file_id=3,
+        case_id=99,
+    )
+    client = _build_client(fake_db)
+
+    response = client.get("/api/v1/chat/history", params={"session_id": "session-1", "case_id": 3})
+
+    assert response.status_code == 409
+    assert "Session does not belong to this case." in response.text
 
 
 def test_stream_response_strips_think_tags_across_chunks(monkeypatch):

@@ -151,16 +151,17 @@ def validate_requested_model(model: str) -> str:
     return normalized_model
 
 
-def get_llm(model: str) -> ChatOpenAI | ChatOllama:
+def get_llm(model: str, *, temperature: float | None = None) -> ChatOpenAI | ChatOllama:
     validated_model = validate_requested_model(model)
     config = get_llm_config()
+    resolved_temperature = config.temperature if temperature is None else temperature
 
     if config.provider == "chatai":
         return ChatOpenAI(
             api_key=config.chatai_api_key,
             base_url=config.chatai_base_url,
             model=validated_model,
-            temperature=config.temperature,
+            temperature=resolved_temperature,
             top_p=config.top_p,
             max_retries=config.max_retries,
         )
@@ -168,7 +169,7 @@ def get_llm(model: str) -> ChatOpenAI | ChatOllama:
     return ChatOllama(
         model=validated_model,
         base_url=config.ollama_base_url,
-        temperature=config.temperature,
+        temperature=resolved_temperature,
         top_p=config.top_p,
         max_retries=config.max_retries,
     )

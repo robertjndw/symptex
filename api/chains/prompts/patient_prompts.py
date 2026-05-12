@@ -11,8 +11,6 @@ def get_prompt(patient_condition: str, talkativeness: str, patient_details: str,
     option = OPTIONS_TABLE.get(patient_condition, "default")
     return build_system_prompt(PROMPTS[option], FEW_SHOTS[option], talkativeness, patient_details, docs_available, docs_summary)
 
-#todo test prompt out, goal -> make LLM aware of the existence and type of each doc.
-
 def build_system_prompt(base_prompt: str, few_shot_msgs : list, talkativeness: str, patient_details: str, docs_available: bool, docs_summary: str):
     full_instructions = base_prompt + "\n\n" + PATIENT_SUFFIX
     initial_messages = [SystemMessagePromptTemplate.from_template(full_instructions)]
